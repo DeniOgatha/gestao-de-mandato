@@ -1683,6 +1683,8 @@ function openContato(id) {
     ...D.demandas.filter(d => d.solicitante === id).map(d => ({ d: d.abertura, k: 'Demanda', t: `${d.protocolo} · ${d.titulo}`, s: d.status, type: 'demanda', id: d.id })),
     ...D.visitas.filter(v => v.contato === id).map(v => ({ d: v.data, k: v.checkin ? `Visita · ${v.protocolo}` : 'Visita', t: v.resumo ? `${v.motivo}: ${v.resumo.length > 90 ? v.resumo.slice(0, 90).trim() + '…' : v.resumo}` : v.motivo, s: '', type: 'visita', id: v.id })),
     ...D.visitas.filter(v => v.contato === id && v.waEm).map(v => ({ d: v.waEm.slice(0, 10), k: 'WhatsApp enviado', t: 'Agradecimento pela visita', s: '', type: 'visita', id: v.id })),
+    ...(D.checkins || []).filter(k => k.contato === id && k.status === 'Saiu sem atendimento').map(k => ({ d: k.data, k: 'Saiu sem atendimento', t: `${k.motivo}${k.saida ? ' · ' + k.saida.motivo : ''}`, s: k.cancelado ? 'Cancelado' : '', type: 'checkin', id: k.id })),
+    ...(D.checkins || []).filter(k => k.contato === id && (k.retorno || k.retornoAbertoEm)).map(k => ({ d: (k.retorno ? k.retorno.em : k.retornoAbertoEm).slice(0, 10), k: k.retorno ? 'WhatsApp enviado' : 'WhatsApp aberto', t: 'Mensagem de retorno após saída', s: '', type: 'checkin', id: k.id })),
     ...D.ligacoes.filter(l => l.contato === id).map(l => ({ d: l.data, k: 'Ligação ' + l.direcao.toLowerCase(), t: l.assunto, s: '', type: 'ligacao', id: l.id })),
     ...D.eventos.filter(e => (e.participantes || []).includes(id)).map(e => ({ d: e.inicio.slice(0, 10), k: 'Compromisso', t: e.titulo, s: '', type: 'evento', id: e.id }))
   ].sort((a, b) => a.d < b.d ? 1 : -1);
@@ -1691,6 +1693,7 @@ function openContato(id) {
     <div class="dh"><div><p class="eyebrow">${esc(c.categoria)}</p><h2>${esc(c.nome)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
     <div class="db">
       <dl class="kv">
+        ${c.cpf && typeof cpfMask === 'function' ? `<dt>CPF</dt><dd class="mono">${esc(cpfMask(c.cpf))}</dd>` : ''}
         <dt>Telefone</dt><dd class="mono">${esc(c.telefone)}</dd>
         <dt>E-mail</dt><dd>${esc(c.email || '—')}</dd>
         <dt>Bairro</dt><dd>${esc(c.bairro)}</dd>
@@ -1706,6 +1709,7 @@ function openContato(id) {
         <button type="button" class="btn sm" data-act="new" data-type="demanda" data-preset='${esc(JSON.stringify({ solicitante: id, bairro: c.bairro }))}'>Nova demanda</button>
         <button type="button" class="btn sm" data-act="new" data-type="visita" data-preset='${esc(JSON.stringify({ contato: id }))}'>Registrar visita</button>
         <button type="button" class="btn sm" data-act="new" data-type="ligacao" data-preset='${esc(JSON.stringify({ contato: id }))}'>Registrar ligação</button>
+        ${typeof vPresenca === 'function' ? `<button type="button" class="btn sm" data-act="pr-pessoa" data-id="${id}">Presença e declaração</button>` : ''}
       </div>
       ${ind.length ? `<div class="sect"><h3>Indicou ${ind.length} ${ind.length === 1 ? 'pessoa' : 'pessoas'}</h3><p>${ind.map(x => `<a href="#rede" data-act="open" data-type="contato" data-id="${x.id}">${esc(x.nome)}</a>`).join(', ')}</p></div>` : ''}
       <div class="sect"><h3>Histórico com o gabinete</h3>${items.length ? `<ul class="timeline">${items.map(x => `<li><span class="d">${fD(x.d)}</span><span><span class="k">${esc(x.k)}</span><a href="#" data-act="open" data-type="${x.type}" data-id="${x.id}">${esc(x.t)}</a> ${x.s ? chip(x.s) : ''}</span></li>`).join('')}</ul>` : '<p class="note">Nenhuma interação registrada ainda.</p>'}</div>
@@ -3530,7 +3534,7 @@ async function baixar(nome, blob, okMsg) {
   const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
   if (dl) {
     try { await dl.save({ filename: nome, data: blob }); toast(okMsg); }
-    catch (e) { if (e && e.code !== 'declined') toast('Não foi possível salvar o arquivo nesta visualização.'); }
+    catch (e) { if (e && e.code === 'extension_not_enabled') toast('Este formato não está disponível nesta visualização. Use a exportação em PDF.'); else if (e && e.code !== 'declined') toast('Não foi possível salvar o arquivo nesta visualização.'); }
     return;
   }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click();
@@ -3771,8 +3775,10 @@ function vCheckin() {
   CK_CEP = { seq: 0, seq2: 0, manual: false, ultimo: '', lista: [] };
   return `<div class="kiosk-wrap"><form class="kiosk-card" id="ck-form" novalidate>${marca}
     <div><h1>Faça seu check-in</h1><p class="sub">Leva menos de um minuto. Depois é só aguardar: chamamos pela senha.</p></div>
+    <p class="ck-demo">Ambiente de demonstração: use dados fictícios. O que for digitado fica só neste navegador.</p>
     <div class="fgrid">
       <div class="fld w2"><label for="ckf-nome">Nome completo *</label><input id="ckf-nome" autocomplete="name" value="${esc(v.nome || '')}"></div>
+      <div class="fld w2"><label for="ckf-cpf">CPF *</label><input id="ckf-cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="14"><span class="hint">Serve para registrar e comprovar a sua presença no gabinete.</span></div>
       <div class="fld w2"><label for="ckf-tel">Celular com WhatsApp *</label><input id="ckf-tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(15) 99999-9999" value="${esc(v.tel || '')}"></div>
       <div class="fld w2"><label for="ckf-cep">CEP *</label><input id="ckf-cep" inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" maxlength="9"><span class="ck-cep-st" id="ckf-cep-st" aria-live="polite">Digite o CEP e o endereço aparece sozinho.</span><button type="button" class="linkbtn ck-semcep" data-act="ck-semcep">Não sei o CEP: digitar o endereço</button></div>
       <div class="ck-end" id="ckf-end" hidden>
@@ -3787,7 +3793,8 @@ function vCheckin() {
       <div class="fld w2"><label for="ckf-motivo">Assunto *</label><select id="ckf-motivo"><option value="">Selecione</option>${D.motivos.map(m => `<option>${esc(m.nome)}</option>`).join('')}${D.ckOutros !== false ? '<option value="__outro">Outros</option>' : ''}</select></div>
       <div class="fld w2" id="ckf-outro-f" hidden><label for="ckf-outro">Qual é o assunto? *</label><input id="ckf-outro" maxlength="60" placeholder="Ex.: pedido de poda de árvore"></div>
       <div class="fld w2"><label for="ckf-relato">Conte em poucas palavras (opcional)</label><textarea id="ckf-relato" rows="3" placeholder="Ex.: falta de vaga na creche para meu filho">${esc(v.relato || '')}</textarea></div>
-      <label class="ck-consent w2" for="ckf-lgpd"><input type="checkbox" id="ckf-lgpd" ${v.lgpd ? 'checked' : ''}><span>Autorizo o gabinete a registrar esta visita e a falar comigo pelo WhatsApp sobre o meu atendimento. *</span></label>
+      <label class="ck-consent w2" for="ckf-lgpd"><input type="checkbox" id="ckf-lgpd" ${v.lgpd ? 'checked' : ''}><span>Autorizo o gabinete a registrar meus dados e esta visita, para o atendimento e para comprovar a minha presença, e a falar comigo pelo WhatsApp sobre o atendimento. *</span></label>
+      <p class="ck-privacidade">Os dados ficam com o gabinete, não são vendidos nem usados em campanha. Você pode pedir acesso, correção ou exclusão na recepção.</p>
     </div>
     <p class="ferr" id="ckf-err" hidden></p>
     <button class="btn primary ck-go" type="submit">Fazer check-in</button>${pe}
@@ -3821,7 +3828,7 @@ document.addEventListener('click', e => {
     case 'ck-cartaz': pdfCartaz(); break;
     case 'ck-fila': k.atendente = +$(`#ck-at-${id}`).value; k.status = 'Na fila'; k.filaEm = agora(); save(); toast(`${first(k.nome)} na fila de ${first(mName(k.atendente))}`); render(); break;
     case 'ck-iniciar': k.status = 'Em atendimento'; k.inicio = agora(); save(); toast(`Atendimento de ${first(k.nome)} iniciado`); render(); break;
-    case 'ck-saiu': k.status = 'Saiu sem atendimento'; k.fim = agora(); save(); toast(`${first(k.nome)} saiu sem atendimento`); render(); break;
+    case 'ck-saiu': openSaida(id); break;
     case 'ck-concluir': openConcluir(id); break;
     case 'ck-pdf': pdfVisita(id); break;
     case 'ck-wa-env': { const v = byId('visitas', id); enviarAgradecimento(v); save(); toast(`Agradecimento enviado para ${first(cName(v.contato))}`); render(); if (!$('#drawer').hidden) openVisitaReg(v.id); break; }
@@ -3837,19 +3844,21 @@ document.addEventListener('submit', e => {
   const f = e.target;
   if (f.id === 'ck-form') {
     e.preventDefault();
-    const nome = $('#ckf-nome').value.trim().replace(/\s+/g, ' '), tel = soDig($('#ckf-tel').value), cepD = $('#ckf-cep').value.replace(/\D/g, ''), motivoSel = $('#ckf-motivo').value, motivo = motivoSel === '__outro' ? $('#ckf-outro').value.trim().replace(/\s+/g, ' ') : motivoSel, relato = $('#ckf-relato').value.trim(), lgpd = $('#ckf-lgpd').checked;
+    const nome = $('#ckf-nome').value.trim().replace(/\s+/g, ' '), cpfIn = $('#ckf-cpf').value, tel = soDig($('#ckf-tel').value), cepD = $('#ckf-cep').value.replace(/\D/g, ''), motivoSel = $('#ckf-motivo').value, motivo = motivoSel === '__outro' ? $('#ckf-outro').value.trim().replace(/\s+/g, ' ') : motivoSel, relato = $('#ckf-relato').value.trim(), lgpd = $('#ckf-lgpd').checked;
     const val = i => $('#' + i).value.trim().replace(/\s+/g, ' ');
     const end = { cep: cepD.length === 8 ? cepFmt(cepD) : '', rua: val('ckf-rua'), numero: val('ckf-num'), complemento: val('ckf-comp'), bairro: val('ckf-bairro'), cidade: val('ckf-cidade'), uf: $('#ckf-uf').value }, bairro = end.bairro;
     ui('ck').v = { nome, tel: $('#ckf-tel').value, motivo, relato, lgpd };
-    const err = !nome || nome.split(' ').length < 2 ? 'Escreva seu nome e sobrenome.' : tel.length < 10 || tel.length > 11 ? 'Confira o celular: DDD e número, por exemplo (15) 99999-9999.' : cepD.length !== 8 && !CK_CEP.manual ? 'Digite o CEP com 8 números ou toque em “Não sei o CEP”.' : $('#ckf-end').hidden ? 'Aguarde a busca do CEP ou digite o endereço.' : !bairro || !end.cidade ? 'Complete o endereço: bairro e cidade.' : !motivoSel ? 'Escolha o assunto da visita.' : !motivo ? 'Escreva qual é o assunto da visita.' : !lgpd ? 'Para fazer o check-in, marque a autorização no fim do formulário.' : '';
+    const err = !nome || nome.split(' ').length < 2 ? 'Escreva seu nome e sobrenome.' : !cpfOk(cpfIn) ? 'Confira o CPF: os 11 números não formam um CPF válido.' : tel.length < 10 || tel.length > 11 ? 'Confira o celular: DDD e número, por exemplo (15) 99999-9999.' : cepD.length !== 8 && !CK_CEP.manual ? 'Digite o CEP com 8 números ou toque em “Não sei o CEP”.' : $('#ckf-end').hidden ? 'Aguarde a busca do CEP ou digite o endereço.' : !bairro || !end.cidade ? 'Complete o endereço: bairro e cidade.' : !motivoSel ? 'Escolha o assunto da visita.' : !motivo ? 'Escreva qual é o assunto da visita.' : !lgpd ? 'Para fazer o check-in, marque a autorização no fim do formulário.' : '';
     if (err) { const p = $('#ckf-err'); p.textContent = err; p.hidden = false; return; }
-    let c = D.contatos.find(x => soDig(x.telefone) === tel), novo = false;
+    // primeiro pelo CPF; pelo telefone só se o contato ainda não tiver CPF (famílias dividem o mesmo número)
+    let c = D.contatos.find(x => x.cpf && cpfDig(x.cpf) === cpfDig(cpfIn)), novo = false;
+    if (!c) { const p = D.contatos.find(x => soDig(x.telefone) === tel && !x.cpf); if (p) c = p; }
     if (!c) {
       c = { id: nextId('contatos'), nome, telefone: fTel(tel), email: '', nascimento: '', bairro, endereco: end, categoria: 'Eleitor', origem: 'Visita ao gabinete', indicadoPor: null, etiquetas: [], criadoEm: hoje(), obs: 'Cadastrado no check-in da recepção.' };
       D.contatos.push(c); novo = true;
     }
-    c.lgpd = agora(); c.endereco = end; c.bairro = bairro;
-    const H = hoje(), k = { id: nextId('checkins'), senha: D.checkins.filter(x => x.data === H).length + 1, data: H, chegada: agora(), contato: c.id, nome: c.nome, telefone: c.telefone, bairro, endereco: end, motivo, relato, lgpd, novo: novo || !visitasDe(c.id), status: 'Chegou', atendente: null, filaEm: null, inicio: null, fim: null, visita: null, recebidoPor: RECEPCIONISTA };
+    c.lgpd = agora(); c.endereco = end; c.bairro = bairro; c.cpf = cpfFmt(cpfIn); c.telefone = fTel(tel);
+    const H = hoje(), k = { id: nextId('checkins'), senha: D.checkins.filter(x => x.data === H).length + 1, data: H, chegada: agora(), contato: c.id, nome: c.nome, cpf: c.cpf, telefone: c.telefone, bairro, endereco: end, motivo, relato, lgpd, novo: novo || !visitasDe(c.id), status: 'Chegou', atendente: null, filaEm: null, inicio: null, fim: null, visita: null, recebidoPor: RECEPCIONISTA };
     D.checkins.push(k); save();
     Object.assign(ui('ck'), { done: k.id, v: {} }); render();
     clearTimeout(window.ckT); window.ckT = setTimeout(() => { if (cur() === 'checkin' && ui('ck').done === k.id) { ui('ck').done = 0; render(); } }, 25000);
@@ -4084,6 +4093,788 @@ body.kiosk #view{padding:0!important;background:var(--bg)}
 @media (max-width:640px){.kiosk-card{border:0;padding:8px 0 0;background:transparent}.ck .kanban{grid-auto-flow:row;grid-auto-columns:auto}}
 `;
 document.head.appendChild(ckCss);
+render();
+</script>
+<script>
+/* =====================================================================
+   v12: presença — CPF, saídas sem atendimento, mensagens, horários de
+   pico, consulta por pessoa, declaração de comparecimento, exportação
+   em Excel e PDF com registro de cada exportação (LGPD)
+   ===================================================================== */
+/* SHA-256 síncrono (UTF-8), para encadear eventos sem esperar Promises */
+function sha256hex(texto) {
+  const s = unescape(encodeURIComponent(String(texto)));
+  const rr = (v, n) => (v >>> n) | (v << (32 - n)), MAX = 2 ** 32;
+  if (!sha256hex.k) {
+    const h = [], k = [], comp = {};
+    for (let c = 2, n = 0; n < 64; c++) {
+      if (comp[c]) continue;
+      for (let i = c * c; i < 400; i += c) comp[i] = 1;
+      if (n < 8) h[n] = (Math.pow(c, .5) * MAX) | 0;
+      k[n++] = (Math.pow(c, 1 / 3) * MAX) | 0;
+    }
+    sha256hex.h = h; sha256hex.k = k;
+  }
+  const K = sha256hex.k, w0 = [];
+  let msg = s + '\x80';
+  while (msg.length % 64 - 56) msg += '\x00';
+  for (let i = 0; i < msg.length; i++) w0[i >> 2] |= msg.charCodeAt(i) << ((3 - i) % 4) * 8;
+  w0.push((s.length * 8 / MAX) | 0, (s.length * 8) | 0);
+  let H = sha256hex.h.slice();
+  for (let j = 0; j < w0.length; j += 16) {
+    const w = w0.slice(j, j + 16), old = H.slice();
+    for (let i = 0; i < 64; i++) {
+      if (i >= 16) { const a = w[i - 15], b = w[i - 2]; w[i] = (w[i - 16] + (rr(a, 7) ^ rr(a, 18) ^ (a >>> 3)) + w[i - 7] + (rr(b, 17) ^ rr(b, 19) ^ (b >>> 10))) | 0; }
+      const [a, b, c, d, e, f, g, hh] = H;
+      const t1 = (hh + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + (w[i] | 0)) | 0;
+      const t2 = ((rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      H = [(t1 + t2) | 0, a, b, c, (d + t1) | 0, e, f, g];
+    }
+    for (let i = 0; i < 8; i++) H[i] = (H[i] + old[i]) | 0;
+  }
+  return H.map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
+}
+const USUARIO = 2; // quem está usando o sistema na demonstração (Renata Coelho)
+const perfilAtual = () => ((D.usuarios || []).find(u => u.id === USUARIO) || {}).perfil || 'Equipe';
+const ehAdmin = () => perfilAtual() === 'Administrador';
+const podeExportar = () => perfilAtual() !== 'Somente leitura';
+const addMinT = (t, m) => { const d = new Date(new Date(t).getTime() + m * 6e4); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const fDH = t => t ? `${fD(t)} ${fT(t)}` : '—';
+const senhaTxt = k => pad(k.senha).padStart(3, '0');
+
+/* ---------- CPF ---------- */
+const cpfDig = s => String(s || '').replace(/\D/g, '');
+function cpfDV(d9) {
+  let s = 0; for (let i = 0; i < 9; i++) s += +d9[i] * (10 - i);
+  const a = s * 10 % 11 % 10; s = 0;
+  for (let i = 0; i < 9; i++) s += +d9[i] * (11 - i);
+  return `${a}${(s + a * 2) * 10 % 11 % 10}`;
+}
+const cpfOk = s => { const d = cpfDig(s); return d.length === 11 && !/^(\d)\1{10}$/.test(d) && cpfDV(d.slice(0, 9)) === d.slice(9); };
+const cpfFmt = s => { const d = cpfDig(s).slice(0, 11); return [d.slice(0, 3), d.slice(3, 6), d.slice(6, 9)].filter(Boolean).join('.') + (d.length > 9 ? '-' + d.slice(9) : ''); };
+const cpfMask = s => { const d = cpfDig(s); return d.length === 11 ? `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**` : '—'; };
+// CPF dos dados de exemplo: o último dígito verificador é errado de propósito, para nunca coincidir com o de alguém real
+const cpfFicticio = R => { const d9 = Array.from({ length: 9 }, () => Math.floor(R() * 10)).join(''), dv = cpfDV(d9); return cpfFmt(d9 + dv[0] + ((+dv[1] + 1) % 10)); };
+
+/* ---------- histórico de exemplo: 90 dias de recepção ---------- */
+const SAIDA_MOT = ['Desistiu de esperar', 'Precisou ir embora', 'Voltará outro dia', 'Resolvido por outro canal'];
+const MSG_RETORNO = 'Olá, {nome}! Vimos que você esteve no gabinete em {data} e não conseguiu ser atendido. Quer marcar um horário? É só responder por aqui. Gabinete da vereadora Marta Lacerda.';
+function seedPresenca(ext) {
+  const R = rng(4417), pick = a => a[Math.floor(R() * a.length)], int = (a, b) => a + Math.floor(R() * (b - a + 1));
+  const wpick = (a, w) => { let s = w.reduce((x, y) => x + y), r = R() * s; for (let i = 0; i < a.length; i++) { r -= w[i]; if (r < 0) return a[i]; } return a[0]; };
+  const HORAS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17], PESO = [6, 14, 17, 11, 3, 5, 12, 13, 8, 4];
+  const RESUMOS = ['Relatou o problema e mostrou documentos; orientado sobre o caminho do pedido.', 'Pediu apoio do mandato; pedido registrado e retorno combinado.', 'Conversa sobre a situação do bairro; pedido anotado para ofício.', 'Trouxe convite e contatos da associação de moradores.', 'Entregou currículo e recebeu orientação sobre vagas abertas.', 'Tirou dúvidas e recebeu orientação.'];
+  const ENC = ['Ofício enviado ao órgão responsável.', 'Retorno ao visitante em 15 dias.', 'Orientado a procurar a Secretaria responsável.', 'Convite registrado na agenda.', 'Sem encaminhamento.'];
+  const motivos = (ext.motivos || D.motivos || []).map(m => m.nome).concat(V_MOTIVOS).filter((x, i, a) => a.indexOf(x) === i);
+  const base = D.contatos.slice(0, 176), frequentes = base.slice(0, 60).filter((_, i) => i % 2 === 0);
+  const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+  const T = (d, h, m) => `${iso(d)}T${pad(h)}:${pad(m)}`;
+  let kid = ext.checkins.reduce((m, k) => Math.max(m, k.id), 0);
+  const novos = [];
+  for (let dias = 90; dias >= 1; dias--) {
+    const d = addDays(hoje0, -dias), dow = d.getDay();
+    if (dow === 0) continue;
+    const n = dow === 6 ? int(0, 2) : Math.round((dow === 1 ? 5.5 : dow === 5 ? 3.2 : 4.3) * (0.6 + R() * 0.8));
+    const chegadas = Array.from({ length: n }, () => T(d, dow === 6 ? int(9, 11) : wpick(HORAS, PESO), int(0, 59))).sort();
+    chegadas.forEach((chegada, i) => {
+      const c = R() < .45 ? pick(frequentes) : pick(base), motivo = pick(motivos), at = pick([1, 2, 4, 5]);
+      const espera = Math.min(70, Math.round(4 + R() * R() * 55)), saiu = R() < (espera > 30 ? .5 : espera > 20 ? .22 : .06);
+      const lgpd = R() < .95;
+      const k = { id: ++kid, senha: i + 1, data: iso(d), chegada, contato: c.id, nome: c.nome, telefone: c.telefone, bairro: c.bairro, endereco: c.endereco || null, motivo, relato: '', lgpd, novo: false, atendente: null, filaEm: null, inicio: null, fim: null, visita: null, recebidoPor: RECEPCIONISTA, hist: true };
+      const naFila = R() < .7;
+      if (naFila) { k.atendente = at; k.filaEm = addMinT(chegada, int(1, 4)); }
+      if (saiu) {
+        k.status = 'Saiu sem atendimento'; k.fim = addMinT(chegada, espera);
+        k.saida = { etapa: naFila ? 'Na fila' : 'Chegou', motivo: wpick(SAIDA_MOT, [6, 3, 3, 1]), obs: '', espera, atendente: k.atendente, por: RECEPCIONISTA, em: k.fim };
+        if (lgpd && R() < .45) k.retorno = { em: addMinT(k.fim, int(30, 240)), texto: MSG_RETORNO.replace('{nome}', first(c.nome)).replace('{data}', fD(k.data)), via: 'canal' };
+      } else {
+        k.status = 'Atendido'; k.atendente = at; k.filaEm = k.filaEm || addMinT(chegada, 1); k.inicio = addMinT(chegada, espera); k.fim = addMinT(k.inicio, int(8, 35));
+        const v = { id: nextId('visitas'), data: iso(d), contato: c.id, motivo, atendente: at, encaminhamento: pick(ENC), resumo: pick(RESUMOS), checkin: k.id, demanda: null, pdfEm: k.fim, waEm: lgpd && R() < .7 ? addMinT(k.fim, 2) : null };
+        v.protocolo = `RV-${d.getFullYear()}-${pad(v.id).padStart(4, '0')}`;
+        D.visitas.push(v); k.visita = v.id;
+      }
+      novos.push(k);
+    });
+  }
+  ext.checkins.unshift(...novos);
+  // CPF de quem passou pela recepção
+  const C = new Set(ext.checkins.map(k => k.contato));
+  D.contatos.forEach(c => { if (C.has(c.id) && !c.cpf) c.cpf = cpfFicticio(R); });
+  ext.checkins.forEach(k => { const c = byId('contatos', k.contato); if (c && !k.cpf) k.cpf = c.cpf; });
+  ext.exportacoes = ext.exportacoes || [];
+  ext.presencaV = 1;
+}
+{
+  const _seedExtra3 = seedExtra;
+  seedExtra = function () { const x = _seedExtra3(); seedPresenca(x); return x; };
+  window.seedExtra = seedExtra;
+  if (!D.presencaV) { seedPresenca(D); save(); }
+  if (!D.exportacoes) { D.exportacoes = []; save(); }
+}
+
+/* ---------- contato: CPF editável pela equipe ---------- */
+SCHEMA.contato.fields.splice(SCHEMA.contato.fields.findIndex(f => f.k === 'telefone') + 1, 0, { k: 'cpf', l: 'CPF', h: 'Só a equipe vê. Nas listas aparece mascarado.' });
+SCHEMA.contato.validate = v => v.cpf && !cpfOk(v.cpf) && !D.contatos.some(c => c.cpf === v.cpf) ? 'CPF inválido: confira os 11 números.' : '';
+{ const _after = SCHEMA.contato.after; SCHEMA.contato.after = x => { if (_after) _after(x); if (x.cpf) x.cpf = cpfFmt(x.cpf); }; }
+
+/* ---------- saída sem atendimento ---------- */
+function openSaida(id, erro) {
+  const k = D.checkins.find(x => x.id === id); if (!k) return;
+  const esp = minEntre(k.chegada, agora());
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Registrar saída · senha ${senhaTxt(k)}</p><h2>${esc(k.nome)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <dl class="kv"><dt>Situação</dt><dd>${esc(k.status)}${k.atendente ? ` · fila de ${esc(mName(k.atendente))}` : ''}</dd><dt>Chegada</dt><dd class="num">${fT(k.chegada)} · esperou ${fMin(esp)}</dd><dt>Assunto</dt><dd>${esc(k.motivo)}</dd></dl>
+    <fieldset class="pr-radios"><legend>Por que saiu sem atendimento? *</legend>
+      ${[...SAIDA_MOT, 'Outro'].map((m, i) => `<label><input type="radio" name="pr-saida" value="${esc(m)}" ${i === 0 ? 'checked' : ''}>${esc(m)}</label>`).join('')}
+    </fieldset>
+    <div class="fld"><label for="pr-saida-h">Horário em que saiu</label><input type="time" id="pr-saida-h"><span class="hint">Deixe vazio se a pessoa saiu agora. Se preencher, fica registrado como horário informado, com lançamento posterior.</span></div>
+    <div class="fld"><label for="pr-saida-obs">Observação</label><textarea id="pr-saida-obs" maxlength="200" placeholder="Ex.: disse que volta na segunda pela manhã"></textarea><span class="hint">Obrigatória quando o motivo for “Outro”.</span></div>
+    <p class="ferr" ${erro ? '' : 'hidden'}>${esc(erro || '')}</p>
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Cancelar</button><button type="button" class="btn primary" data-act="pr-saida-ok" data-id="${id}">Registrar saída</button></div></div>`);
+}
+function openSaidaInfo(id, aviso) {
+  const k = D.checkins.find(x => x.id === id); if (!k) return;
+  const s = k.saida || {}, msg = (k.retorno && k.retorno.texto) || msgRetorno(k), c = byId('contatos', k.contato) || {};
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Saiu sem atendimento · senha ${senhaTxt(k)}</p><h2>${esc(k.nome)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    ${aviso ? `<p class="ck-aviso">${esc(aviso)}</p>` : ''}
+    <dl class="kv">
+      <dt>Data</dt><dd class="num">${fD(k.data)} · chegou ${fT(k.chegada)} · saiu ${fT(k.fim)}</dd>
+      <dt>Esperou</dt><dd class="num">${fMin(s.espera != null ? s.espera : minEntre(k.chegada, k.fim))}</dd>
+      <dt>Etapa</dt><dd>${s.etapa === 'Na fila' ? `Na fila${s.atendente ? ' de ' + esc(mName(s.atendente)) : ''}` : 'Aguardando a recepção'}</dd>
+      <dt>Motivo</dt><dd>${esc(s.motivo || '—')}${s.obs ? ` · ${esc(s.obs)}` : ''}</dd>
+      <dt>Assunto</dt><dd>${esc(k.motivo)}</dd>
+      <dt>Registrado por</dt><dd>${esc(mName(s.por))}${s.informado ? ` · horário de saída informado, lançado em ${fDH(s.em)}` : ''}</dd>
+      <dt>Contato</dt><dd><a href="#" data-act="open" data-type="contato" data-id="${k.contato}">Ver histórico de ${esc(first(k.nome))}</a></dd>
+    </dl>
+    <div class="sect"><h3>Mensagem de retorno</h3>
+      ${k.lgpd ? `<p class="ck-msg">${esc(msg)}</p><div class="ck-act" style="margin-top:8px">${k.retorno ? `<span class="chip s-ok">Enviada em ${fDH(k.retorno.em)}</span>` : `${k.retornoAbertoEm ? `<span class="chip s-info">Aberta no WhatsApp ${fDH(k.retornoAbertoEm)}</span>` : ''}<button type="button" class="btn primary" data-act="pr-retorno" data-id="${k.id}">Enviar pelo canal do gabinete</button>`}<a class="btn pr-wa-link" href="${esc(waLink(c.telefone || k.telefone, msg))}" target="_blank" rel="noopener" data-kid="${k.id}">Abrir no WhatsApp</a></div>` : '<p class="note">O visitante não autorizou contato pelo WhatsApp.</p>'}
+    </div>
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Fechar</button><button type="button" class="btn" data-act="pr-decl" data-k="k${k.id}">Declaração de comparecimento</button></div></div>`);
+}
+const msgRetorno = k => MSG_RETORNO.replace('{nome}', first(k.nome)).replace('{data}', fD(k.data));
+{ const _oi = openItem; openItem = function (type, id) { if (type === 'checkin') return openSaidaInfo(id); return _oi(type, id); }; }
+
+/* ---------- mensagens: um registro só ---------- */
+function mensagens() {
+  const L = [];
+  D.visitas.forEach(v => {
+    if (v.waEm) L.push({ em: v.waEm, contato: v.contato, tipo: 'Agradecimento pela visita', situacao: 'Enviada pelo canal', ref: v.protocolo || '' });
+    else if (v.waAbertoEm) L.push({ em: v.waAbertoEm, contato: v.contato, tipo: 'Agradecimento pela visita', situacao: 'Conversa aberta, envio não confirmado', ref: v.protocolo || '' });
+  });
+  D.checkins.forEach(k => {
+    if (k.retorno) L.push({ em: k.retorno.em, contato: k.contato, tipo: 'Retorno após saída', situacao: 'Enviada pelo canal', ref: `Senha ${senhaTxt(k)} de ${fD(k.data)}` });
+    else if (k.retornoAbertoEm) L.push({ em: k.retornoAbertoEm, contato: k.contato, tipo: 'Retorno após saída', situacao: 'Conversa aberta, envio não confirmado', ref: `Senha ${senhaTxt(k)} de ${fD(k.data)}` });
+  });
+  return L.sort((a, b) => a.em < b.em ? 1 : -1);
+}
+
+/* ---------- presença de uma pessoa (todo o histórico) ---------- */
+function presencasDe(cid) {
+  const L = D.checkins.filter(k => k.contato === cid).map(k => ({ origem: 'Check-in', data: k.data, chegada: k.chegada, inicio: k.inicio, fim: k.fim, status: k.cancelado ? 'Cancelado' : k.status, corrigido: !!(k.correcoes && k.correcoes.length) || !!(k.saida && k.saida.informado), atendente: k.atendente, motivo: k.motivo, protocolo: (byId('visitas', k.visita) || {}).protocolo || '', checkin: k.id, visita: k.visita }));
+  D.visitas.filter(v => v.contato === cid && !v.checkin).forEach(v => L.push({ origem: 'Registro manual', data: v.data, chegada: null, inicio: null, fim: null, status: v.cancelado ? 'Cancelado' : 'Atendido', atendente: v.atendente, motivo: v.motivo, protocolo: v.protocolo || '', visita: v.id }));
+  return L.sort((a, b) => (a.chegada || a.data) < (b.chegada || b.data) ? 1 : -1);
+}
+const resumoPessoa = cid => { const P = presencasDe(cid); return { total: P.filter(p => p.status !== 'Chegou' && p.status !== 'Na fila' && p.status !== 'Em atendimento').length + P.filter(p => ['Chegou', 'Na fila', 'Em atendimento'].includes(p.status)).length, atendidos: P.filter(p => p.status === 'Atendido').length, saidas: P.filter(p => p.status === 'Saiu sem atendimento').length, manuais: P.filter(p => p.origem === 'Registro manual').length, primeira: P.length ? P[P.length - 1].data : null, ultima: P.length ? P[0].data : null, P }; };
+
+/* ---------- página Presença ---------- */
+Object.assign(CLS, { 'Cancelado': 'crit', 'Saiu sem atendimento': 'warn' });
+const porNome = id => id === 0 ? 'Visitante (formulário)' : mName(id);
+const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+function prSt() { return ui('pr', { de: iso(addDays(new Date(new Date().setHours(0, 0, 0, 0)), -29)), ate: hoje(), tab: 'horarios', q: '', pessoa: 0 }); }
+function prPeriodo() { const st = prSt(); return D.checkins.filter(k => k.data >= st.de && k.data <= st.ate && !k.cancelado); }
+const esperaDe = k => k.status === 'Saiu sem atendimento' ? (k.saida && k.saida.espera != null ? k.saida.espera : minEntre(k.chegada, k.fim)) : minEntre(k.chegada, k.inicio);
+
+function colChart(items, aria) {
+  // largura fixa: os dois gráficos ficam na mesma escala, com barras de no máximo 44 unidades
+  const G = 10, H = 110, TOP = 22, width = 480, n = items.length, W = Math.min(44, (width - G * (n + 1)) / n), x0 = (width - n * (W + G) - G) / 2;
+  const max = Math.max(1, ...items.map(i => i.v)), pk = items.reduce((a, b) => b.v > a.v ? b : a, items[0]), height = TOP + H + 26, base = TOP + H;
+  const bar = (it, i) => {
+    const x = x0 + G + i * (W + G), h = it.v ? Math.max(2, Math.round(it.v / max * H)) : 0, y = base - h, r = Math.min(3, h);
+    const d = h ? `M${x},${base}V${y + r}Q${x},${y} ${x + r},${y}H${x + W - r}Q${x + W},${y} ${x + W},${y + r}V${base}Z` : '';
+    return `<g class="pr-bar${it === pk && it.v ? ' pk' : ''}"><title>${esc(it.t || it.l)}: ${fN(it.v)} ${it.v === 1 ? 'visita' : 'visitas'}</title><rect x="${x - G / 2}" y="${TOP - 18}" width="${W + G}" height="${H + 18}" fill="transparent"/>${d ? `<path d="${d}"/>` : ''}${it === pk && it.v ? `<text class="pr-pkl" x="${x + W / 2}" y="${y - 6}" text-anchor="middle">${fN(it.v)}</text>` : ''}<text class="pr-ax" x="${x + W / 2}" y="${base + 16}" text-anchor="middle">${esc(it.l)}</text></g>`;
+  };
+  return `<svg class="pr-cols" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(aria)}"><line class="pr-base" x1="${G / 2}" x2="${width - G / 2}" y1="${base}" y2="${base}"/>${items.map(bar).join('')}</svg>
+  <details class="pr-tab"><summary>Ver em tabela</summary><table><tbody>${items.map(i => `<tr><td>${esc(i.t || i.l)}</td><td class="r num">${fN(i.v)}</td></tr>`).join('')}</tbody></table></details>`;
+}
+
+function vPresenca() {
+  const st = prSt(), K = prPeriodo();
+  const at = K.filter(k => k.status === 'Atendido'), sa = K.filter(k => k.status === 'Saiu sem atendimento'), fech = [...at, ...sa];
+  const msgs = mensagens().filter(m => m.em.slice(0, 10) >= st.de && m.em.slice(0, 10) <= st.ate), env = msgs.filter(m => m.situacao === 'Enviada pelo canal');
+  const espMed = at.length ? Math.round(at.reduce((s, k) => s + esperaDe(k), 0) / at.length) : 0;
+  const pessoas = new Set(K.map(k => k.contato)).size;
+  const porHora = Array.from({ length: 12 }, (_, i) => i + 7).map(h => ({ l: `${h}h`, t: `Das ${h}h às ${h + 1}h`, v: K.filter(k => +k.chegada.slice(11, 13) === h).length }));
+  const porDia = [1, 2, 3, 4, 5, 6].map(d => ({ l: DOW[d], t: DIA[d], v: K.filter(k => pd(k.data).getDay() === d).length }));
+  const faixas = [['Até 10 min', 0, 10], ['11 a 20 min', 11, 20], ['21 a 30 min', 21, 30], ['Mais de 30 min', 31, 999]].map(([l, a, b]) => { const F = fech.filter(k => { const e = esperaDe(k); return e >= a && e <= b; }); return { l, v: F.length ? Math.round(F.filter(k => k.status !== 'Atendido').length / F.length * 100) : 0, n: F.length }; });
+  const pico = porHora.reduce((a, b) => b.v > a.v ? b : a, porHora[0]);
+  const tab = (k, l, n) => `<button type="button" class="${st.tab === k ? 'on' : ''}" data-act="pr-tab" data-k="${k}">${l}${n != null ? `<span class="num">${fN(n)}</span>` : ''}</button>`;
+  const rapido = (dias, l) => `<button type="button" data-act="pr-rapido" data-d="${dias}" class="${st.de === iso(addDays(new Date(new Date().setHours(0, 0, 0, 0)), -(dias - 1))) && st.ate === hoje() ? 'on' : ''}">${l}</button>`;
+  let corpo = '';
+  if (st.tab === 'horarios') corpo = `<div class="grid-2">
+      <section class="panel"><div class="panel-h"><h2>Chegadas por horário</h2><span class="meta">${pico.v ? `pico: ${esc(pico.t.toLowerCase())}` : 'sem visitas no período'}</span></div><div class="panel-b">${colChart(porHora, 'Check-ins por hora de chegada')}</div></section>
+      <section class="panel"><div class="panel-h"><h2>Chegadas por dia da semana</h2></div><div class="panel-b">${colChart(porDia, 'Check-ins por dia da semana')}</div></section>
+      <section class="panel span-2"><div class="panel-h"><h2>Quem desiste, conforme a espera</h2><span class="meta">parte que saiu sem atendimento em cada faixa de espera</span></div><div class="panel-b">${bars(faixas.map(f => ({ l: `${f.l} (${fN(f.n)})`, v: f.v, c: f.v >= 30 ? 'crit' : f.v >= 15 ? 'warn' : 'ok' })), { fmt: v => v + '%', max: 100 })}</div></section>
+    </div>`;
+  else if (st.tab === 'atendidos') corpo = prTabela(prDados('atendidos', { cpf: 'mascarado' }), 'atendidos');
+  else if (st.tab === 'saidas') corpo = prTabela(prDados('saidas', { cpf: 'mascarado' }), 'saidas');
+  else if (st.tab === 'mensagens') corpo = prTabela(prDados('mensagens', { cpf: 'mascarado' }), 'mensagens');
+  else if (st.tab === 'pessoa') corpo = prPessoaView();
+  else if (st.tab === 'auditoria') corpo = prAuditoria();
+  const exp = st.tab !== 'horarios' && !(st.tab === 'pessoa' && !st.pessoa && !st.q);
+  return `<div class="wrap pr">${head('Presença', 'Quem veio, em que horário, quem foi atendido, quem saiu sem atendimento e quais mensagens o gabinete enviou.', `<button type="button" class="btn" data-act="pr-exp" data-f="xlsx" ${exp && podeExportar() ? '' : 'disabled'}>Exportar Excel</button><button type="button" class="btn" data-act="pr-exp" data-f="pdf" ${exp && podeExportar() ? '' : 'disabled'}>Exportar PDF</button>`)}
+  <div class="toolbar pr-per"><label class="pr-dt">De <input type="date" id="pr-de" value="${st.de}" max="${hoje()}"></label><label class="pr-dt">até <input type="date" id="pr-ate" value="${st.ate}" max="${hoje()}"></label><div class="seg">${rapido(7, '7 dias')}${rapido(30, '30 dias')}${rapido(90, '90 dias')}</div><span class="count">${fN(K.length)} check-ins de ${fN(pessoas)} ${pessoas === 1 ? 'pessoa' : 'pessoas'}</span></div>
+  <section class="kpis">
+    <div class="kpi"><span class="l">Check-ins</span><span class="v">${fN(K.length)}</span><span class="d">pico ${pico.v ? esc(pico.t.toLowerCase()) : '—'}</span></div>
+    <div class="kpi"><span class="l">Atendidos</span><span class="v">${fN(at.length)}</span><span class="d">espera média de ${fMin(espMed)}</span></div>
+    <div class="kpi"><span class="l">Saíram sem atendimento</span><span class="v">${fN(sa.length)}</span><span class="d ${fech.length && sa.length / fech.length >= .15 ? 'bad' : ''}">${pct(sa.length, fech.length)} dos encerrados</span></div>
+    <div class="kpi"><span class="l">Mensagens enviadas</span><span class="v">${fN(env.length)}</span><span class="d">${(n => `${fN(n)} ${n === 1 ? 'agradecimento' : 'agradecimentos'}`)(env.filter(m => m.tipo.startsWith('Agrad')).length)}, ${(n => `${fN(n)} ${n === 1 ? 'retorno' : 'retornos'}`)(env.filter(m => m.tipo.startsWith('Retorno')).length)}</span></div>
+  </section>
+  <div class="pill-tabs">${tab('horarios', 'Horários')}${tab('atendidos', 'Atendidos', at.length)}${tab('saidas', 'Não atendidos', sa.length)}${tab('mensagens', 'Mensagens', msgs.length)}${tab('pessoa', 'Por pessoa')}${tab('auditoria', 'Auditoria')}</div>
+  ${corpo}
+  <p class="note pr-lgpd">Você está como <b>${esc(mName(USUARIO))}</b>, perfil ${esc(perfilAtual())}. Nas telas e nas exportações o CPF aparece mascarado; CPF completo e o que foi discutido nos atendimentos só saem para o perfil Administrador (na demonstração, troque o perfil em <a href="#equipe">Gestão › Equipe e permissões</a>). Cada exportação pede a finalidade e fica registrada.</p>
+  </div>`;
+}
+
+/* dados de cada aba: a mesma fonte para a tela, o Excel e o PDF */
+function prDados(tabk, o) {
+  const st = prSt(), cpfV = x => o.cpf === 'completo' ? (x || '—') : cpfMask(x), K = prPeriodo();
+  const vis = k => byId('visitas', k.visita) || {};
+  if (tabk === 'atendidos') {
+    const L = sortBy(K.filter(k => k.status === 'Atendido'), k => k.chegada, -1);
+    return { titulo: 'Atendidos', cols: ['Data', 'Chegada', 'Início', 'Término', 'Espera (min)', 'Visitante', 'CPF', 'Assunto', 'Atendido por', 'Registro', ...(o.sensivel ? ['O que foi discutido'] : [])],
+      num: [4], rows: L.map(k => [fD(k.data), fT(k.chegada), fT(k.inicio), fT(k.fim), esperaDe(k), k.nome, cpfV(k.cpf), k.motivo, mName(k.atendente), vis(k).protocolo || '', ...(o.sensivel ? [vis(k).resumo || ''] : [])]), ids: L.map(k => ({ type: 'visita', id: k.visita })) };
+  }
+  if (tabk === 'saidas') {
+    const L = sortBy(K.filter(k => k.status === 'Saiu sem atendimento'), k => k.chegada, -1);
+    return { titulo: 'Não atendidos', cols: ['Data', 'Chegada', 'Saída', 'Espera (min)', 'Etapa', 'Motivo da saída', 'Visitante', 'CPF', 'Telefone', 'Assunto', 'Retorno'],
+      num: [3], rows: L.map(k => [fD(k.data), fT(k.chegada), fT(k.fim), esperaDe(k), k.saida && k.saida.etapa === 'Na fila' ? `Na fila (${first(mName(k.saida.atendente))})` : 'Aguardando a recepção', k.saida ? k.saida.motivo + (k.saida.obs ? ': ' + k.saida.obs : '') : '—', k.nome, cpfV(k.cpf), k.telefone, k.motivo, k.retorno ? `Enviado ${fDH(k.retorno.em)}` : k.retornoAbertoEm ? 'Aberto, não confirmado' : !k.lgpd ? 'Sem autorização' : 'Pendente']), ids: L.map(k => ({ type: 'checkin', id: k.id })) };
+  }
+  if (tabk === 'mensagens') {
+    const L = mensagens().filter(m => m.em.slice(0, 10) >= st.de && m.em.slice(0, 10) <= st.ate);
+    return { titulo: 'Mensagens', cols: ['Data', 'Hora', 'Destinatário', 'CPF', 'Tipo', 'Situação', 'Referência'], rows: L.map(m => { const c = byId('contatos', m.contato) || {}; return [fD(m.em), fT(m.em), c.nome || '—', cpfV(c.cpf), m.tipo, m.situacao, m.ref]; }), ids: L.map(m => ({ type: 'contato', id: m.contato })) };
+  }
+  if (tabk === 'pessoa') {
+    if (st.pessoa) {
+      const c = byId('contatos', st.pessoa) || {}, P = presencasDe(st.pessoa);
+      return { titulo: `Presenças de ${c.nome}`, todo: true, cols: ['Data', 'Chegada', 'Atendimento', 'Situação', 'Origem', 'Assunto', 'Atendido por', 'Registro'], rows: P.map(p => [fD(p.data), p.chegada ? fT(p.chegada) : '—', p.inicio ? `${fT(p.inicio)} às ${fT(p.fim)}` : '—', p.status, p.origem, p.motivo, p.atendente ? mName(p.atendente) : '—', p.protocolo]), pessoa: c, cpf: cpfV(c.cpf) };
+    }
+    const lista = prBusca();
+    return { titulo: st.q ? `Pessoas encontradas para “${st.q}”` : 'Quem mais veio no período', cols: ['Visitante', 'CPF', 'Vezes no período', 'Atendido', 'Saiu sem atendimento', 'Última vez'], num: [2, 3, 4], rows: lista.map(x => [x.c.nome, cpfV(x.c.cpf), x.n, x.at, x.sa, fD(x.ult)]), ids: lista.map(x => ({ type: 'pr-sel', id: x.c.id })) };
+  }
+  if (tabk === 'auditoria') return prDadosAud(st.aud || 'registro');
+  if (tabk === 'registro' || tabk === 'trilha') return prDadosAud(tabk);
+}
+function prBusca() {
+  const st = prSt(), q = norm(st.q.trim()), qd = cpfDig(st.q);
+  let base;
+  if (q.length >= 2) base = D.contatos.filter(c => norm(c.nome).includes(q) || (qd.length >= 3 && (cpfDig(c.cpf).includes(qd) || soDig(c.telefone).includes(qd))));
+  else { const ids = new Set(prPeriodo().map(k => k.contato)); base = D.contatos.filter(c => ids.has(c.id)); }
+  return base.map(c => { const K = prPeriodo().filter(k => k.contato === c.id), P = presencasDe(c.id); return { c, n: q.length >= 2 ? P.filter(p => p.status !== 'Cancelado').length : K.length, at: (q.length >= 2 ? P : K).filter(k => k.status === 'Atendido').length, sa: (q.length >= 2 ? P : K).filter(k => k.status === 'Saiu sem atendimento').length, ult: P.length ? P[0].data : null }; })
+    .filter(x => x.n || q.length >= 2).sort((a, b) => b.n - a.n || (a.ult < b.ult ? 1 : -1)).slice(0, q.length >= 2 ? 30 : 15);
+}
+function prTabela(T, tabk) {
+  const MAX = 60, rows = T.rows.slice(0, MAX), num = new Set(T.num || []);
+  const act = i => T.ids && T.ids[i] ? (T.ids[i].type === 'pr-sel' ? `data-act="pr-sel" data-id="${T.ids[i].id}"` : `data-act="open" data-type="${T.ids[i].type}" data-id="${T.ids[i].id}"`) : '';
+  return `<div class="tablewrap"><table><thead><tr>${T.cols.map((c, i) => `<th class="${num.has(i) ? 'r' : ''}">${esc(c)}</th>`).join('')}</tr></thead><tbody>
+    ${rows.length ? rows.map((r, i) => `<tr class="${act(i) ? 'click' : ''}" ${act(i)} tabindex="${act(i) ? 0 : -1}">${r.map((v, j) => `<td class="${num.has(j) ? 'r num' : ''}${j === 6 && tabk !== 'log' && T.cols[j] === 'CPF' ? ' mono' : ''}">${esc(v)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-row"><td colspan="${T.cols.length}">${tabk === 'log' ? 'Nenhum evento ainda.' : 'Nada neste período.'}</td></tr>`}
+  </tbody></table></div>${T.rows.length > MAX ? `<p class="note">Mostrando ${MAX} de ${fN(T.rows.length)}. A exportação traz todas as linhas.</p>` : ''}`;
+}
+function prPessoaView() {
+  const st = prSt();
+  const busca = `<div class="toolbar"><input class="search" type="search" id="q-pr" data-q="pr" value="${esc(st.q)}" placeholder="Buscar por nome, CPF ou telefone" aria-label="Buscar pessoa">${st.pessoa ? `<button type="button" class="btn sm" data-act="pr-sel" data-id="0">Voltar à lista</button>` : ''}<span class="count">${st.q.trim().length >= 2 ? 'buscando em todo o histórico' : 'mais frequentes no período'}</span></div>`;
+  if (!st.pessoa) return busca + prTabela(prDados('pessoa', { cpf: 'mascarado' }), 'pessoa');
+  const c = byId('contatos', st.pessoa); if (!c) { st.pessoa = 0; return busca; }
+  const R = resumoPessoa(c.id);
+  return `${busca}
+  <section class="panel"><div class="panel-h"><h2>${esc(c.nome)}</h2><span class="meta mono">CPF ${esc(cpfMask(c.cpf))} · ${esc(c.telefone)}</span></div>
+    <div class="panel-b pr-pessoa">
+      <div class="money-strip"><div><span class="l">Vezes no gabinete</span><span class="v">${fN(R.P.filter(p => p.status !== 'Cancelado').length)}</span></div><div><span class="l">Atendido</span><span class="v">${fN(R.atendidos)}</span></div><div><span class="l">Saiu sem atendimento</span><span class="v">${fN(R.saidas)}</span></div><div><span class="l">Primeira e última</span><span class="v pr-dts">${R.primeira ? `${fD(R.primeira)} · ${fD(R.ultima)}` : '—'}</span></div></div>
+      ${R.manuais ? `<p class="note">${R.manuais} ${R.manuais === 1 ? 'visita foi registrada' : 'visitas foram registradas'} à mão pela equipe, sem check-in: sem horário de chegada, valem como prova mais fraca.</p>` : ''}
+      <div class="tablewrap"><table><thead><tr><th>Data</th><th>Chegada</th><th>Atendimento</th><th>Situação</th><th>Assunto</th><th>Registro</th><th class="r">Declaração</th></tr></thead><tbody>
+      ${R.P.map(p => `<tr><td class="num">${fD(p.data)}</td><td class="num">${p.chegada ? fT(p.chegada) : '—'}</td><td class="num">${p.inicio ? `${fT(p.inicio)}–${fT(p.fim)}` : '—'}</td><td>${chip(p.status)}${p.origem === 'Registro manual' ? ' <span class="note">lançamento manual</span>' : ''}${p.corrigido ? ' <span class="note">horário corrigido</span>' : ''}</td><td>${esc(p.motivo)}</td><td class="mono">${esc(p.protocolo || '—')}</td><td class="r">${['Atendido', 'Saiu sem atendimento'].includes(p.status) ? `<button type="button" class="btn sm" data-act="pr-decl" data-k="${p.checkin ? 'k' + p.checkin : 'v' + p.visita}">PDF</button>` : '<span class="note">em andamento</span>'}</td></tr>`).join('') || '<tr class="empty-row"><td colspan="7">Nenhuma presença registrada.</td></tr>'}
+      </tbody></table></div>
+    </div></section>`;
+}
+
+/* ---------- exportação: finalidade obrigatória, registro e aviso LGPD ---------- */
+const FINALIDADES = ['Relatório interno de atendimento', 'Prestação de contas à chefia de gabinete', 'Pedido do próprio titular dos dados', 'Atendimento a requisição oficial'];
+let PR_EXP = null;
+function openExport(fmt, decl) {
+  PR_EXP = { fmt, decl };
+  const st = prSt(), adm = ehAdmin(), pac = fmt === 'json', T = decl || pac ? null : prDados(st.tab, { cpf: 'mascarado' });
+  if (!decl && !pac && (!T || !T.rows.length)) { toast('Nada para exportar com esses filtros.'); return; }
+  const titulo = pac ? 'Pacote de preservação' : decl ? 'Declaração de comparecimento' : `${T.titulo} · ${fmt === 'xlsx' ? 'Excel' : 'PDF'}`;
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">${decl ? 'Gerar documento' : 'Exportar'}</p><h2>${esc(titulo)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <p class="callout info">Este arquivo tem dados pessoais. Use só para a finalidade informada e não compartilhe fora do gabinete. A exportação fica registrada com o seu nome.</p>
+    ${pac ? '<p class="note">Leva todos os registros de presença, as duas cadeias de eventos e a política de retenção, com CPF completo, para guarda ou migração de sistema.</p>' : decl ? '' : `<dl class="kv"><dt>Conteúdo</dt><dd>${esc(T.titulo)}${T.todo ? ' (todo o histórico)' : ` · ${fD(st.de)} a ${fD(st.ate)}`}</dd><dt>Linhas</dt><dd class="num">${fN(T.rows.length)}</dd></dl>`}
+    <div class="fld"><label for="pr-fin">Finalidade *</label><select id="pr-fin">${[...FINALIDADES, 'Outra'].map((f, i) => `<option ${decl ? (i === 2 ? 'selected' : '') : (i === 0 ? 'selected' : '')}>${esc(f)}</option>`).join('')}</select></div>
+    <div class="fld" id="pr-fin-o-f" hidden><label for="pr-fin-o">Descreva a finalidade *</label><input id="pr-fin-o" maxlength="120"></div>
+    ${pac ? '' : decl ? '<p class="note">A declaração leva o CPF completo porque é entregue ao próprio visitante.</p>' : `
+    <label class="switch"><input type="checkbox" id="pr-cpf" ${adm ? '' : 'disabled'}>Incluir CPF completo</label>
+    ${st.tab === 'atendidos' ? `<label class="switch"><input type="checkbox" id="pr-sens" ${adm ? '' : 'disabled'}>Incluir o que foi discutido (pode conter dado sensível)</label>` : ''}
+    ${adm ? '' : `<p class="note">Seu perfil é ${esc(perfilAtual())}: o arquivo sai com CPF mascarado${st.tab === 'atendidos' ? ' e sem o que foi discutido' : ''}. Só o perfil Administrador libera esses campos.</p>`}`}
+    <p class="ferr" id="pr-exp-err" hidden></p>
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Cancelar</button><button type="button" class="btn primary" data-act="pr-gerar">${decl ? 'Gerar declaração' : 'Gerar arquivo'}</button></div></div>`);
+}
+const prCodigo = obj => sha256hex(JSON.stringify(obj)).slice(0, 12).toUpperCase().match(/.{4}/g).join('-');
+const scripts = {};
+const carregar = src => scripts[src] || (scripts[src] = new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => { delete scripts[src]; s.remove(); no(new Error('lib')); }; document.head.appendChild(s); }));
+const xlsxSeguro = v => typeof v === 'number' ? { t: 'n', v } : { t: 's', v: /^[=+\-@\t\r]/.test(String(v ?? '')) ? "'" + String(v) : String(v ?? '') };
+async function prGerar() {
+  const sel = $('#pr-fin').value, fin = sel === 'Outra' ? $('#pr-fin-o').value.trim() : sel;
+  if (!fin) { const p = $('#pr-exp-err'); p.textContent = 'Descreva a finalidade.'; p.hidden = false; return; }
+  const { fmt, decl } = PR_EXP, adm = ehAdmin(), agoraT = agora();
+  if (decl) return gerarDeclaracao(decl, fin);
+  if (fmt === 'json') {
+    if (!adm) return;
+    const p = pacotePreservacao(fin);
+    registrar('trilha', 'Exportação', { oque: 'Pacote de preservação' }, { formato: 'JSON', linhas: p.registros.checkins.length, cpf: 'Completo', finalidade: fin, hashDosDados: p.hashDoConteudo });
+    save(); closeDrawer(); render();
+    return baixar(`Pacote de preservação ${agoraT.slice(0, 10)}.json`, new Blob([JSON.stringify(p, null, 1)], { type: 'application/json' }), 'Pacote salvo');
+  }
+  const st = prSt(), o = { cpf: adm && $('#pr-cpf') && $('#pr-cpf').checked ? 'completo' : 'mascarado', sensivel: !!(adm && $('#pr-sens') && $('#pr-sens').checked) }, T = prDados(st.tab, o);
+  const periodo = T.todo ? 'Todo o histórico' : `${fD(st.de)} a ${fD(st.ate)}`;
+  const aoa = [T.cols, ...T.rows].map(r => r.map(xlsxSeguro)), hashDados = sha256hex(JSON.stringify(aoa.map(r => r.map(c => c.v))));
+  const reg = { oque: T.titulo, periodo, filtros: st.tab === 'pessoa' ? (st.pessoa ? `pessoa ${st.pessoa}` : `busca “${st.q}”`) : st.tab === 'auditoria' ? (st.aud || 'registro') : 'nenhum', formato: fmt === 'xlsx' ? 'Excel' : 'PDF', linhas: T.rows.length, cpf: o.cpf === 'completo' ? 'Completo' : 'Mascarado', sensivel: o.sensivel, finalidade: fin, hashDosDados: hashDados };
+  reg.codigo = 'EXP-' + hashDados.slice(0, 8).toUpperCase().replace(/(.{4})/, '$1-');
+  const ev = registrar('trilha', 'Exportação', { oque: T.titulo }, reg); save();
+  const aviso = `Contém dados pessoais (LGPD). Uso restrito a: ${fin}. Não compartilhe fora do gabinete. Gerado por ${mName(USUARIO)} em ${fDH(agoraT)} · ${reg.codigo} · trilha nº ${ev.n} · SHA-256 ${hashDados.slice(0, 16)}…`;
+  const nome = `${T.titulo} ${periodo.replace(/\//g, '-')}`.replace(/[\\/:*?"<>|“”]/g, '').slice(0, 90);
+  try {
+    if (fmt === 'xlsx') {
+      await carregar('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+      const X = window.XLSX, wb = X.utils.book_new();
+      const ws = X.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = T.cols.map((c, i) => ({ wch: Math.min(48, Math.max(c.length, ...T.rows.slice(0, 200).map(r => String(r[i] ?? '').length)) + 2) }));
+      ws['!autofilter'] = { ref: ws['!ref'] };
+      X.utils.book_append_sheet(wb, ws, 'Dados');
+      const sobre = X.utils.aoa_to_sheet([['Relatório', T.titulo], ['Período', periodo], ['Linhas', T.rows.length], ['Gerado por', mName(USUARIO)], ['Em', fDH(agoraT)], ['Filtros', reg.filtros], ['Finalidade', fin], ['CPF', reg.cpf], ['Código', reg.codigo], ['Hash SHA-256 dos dados', hashDados], ['Registro na trilha', `nº ${ev.n}, hash ${ev.hash}`], ['Fonte do horário', 'relógio do aparelho (protótipo)'], ['Como conferir', 'Presença › Auditoria › Verificar um arquivo exportado'], ['Aviso', aviso]].map(r => r.map(xlsxSeguro)));
+      sobre['!cols'] = [{ wch: 14 }, { wch: 90 }];
+      X.utils.book_append_sheet(wb, sobre, 'Sobre');
+      const buf = X.write(wb, { bookType: 'xlsx', type: 'array' });
+      closeDrawer(); render();
+      await baixar(nome + '.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'Planilha salva');
+    } else {
+      const jsPDF = await jsPDFLib();
+      await carregar('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+      const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: T.cols.length > 7 ? 'landscape' : 'portrait' }), W = doc.internal.pageSize.getWidth(), Hh = doc.internal.pageSize.getHeight();
+      if (typeof doc.autoTable !== 'function') throw new Error('autotable');
+      pdfTopo(doc, W, T.titulo, `${periodo} · ${fN(T.rows.length)} ${T.rows.length === 1 ? 'linha' : 'linhas'}${T.cpf ? ` · CPF ${T.cpf}` : ''}`);
+      doc.autoTable({ startY: 40, head: [T.cols.map(pdfTxt)], body: T.rows.map(r => r.map(v => pdfTxt(v))), margin: { left: 14, right: 14, bottom: 22 },
+        styles: { font: 'helvetica', fontSize: 7.6, cellPadding: 1.6, textColor: [23, 33, 28], lineColor: [215, 221, 218], lineWidth: .1 },
+        headStyles: { fillColor: [22, 87, 63], textColor: 255, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [244, 246, 245] },
+        columnStyles: Object.fromEntries((T.num || []).map(i => [i, { halign: 'right' }])) });
+      pdfRodape(doc, W, Hh, aviso);
+      closeDrawer(); render();
+      await baixar(nome + '.pdf', doc.output('blob'), 'PDF salvo');
+    }
+  } catch (e) { toast('Não foi possível gerar o arquivo agora (sem conexão para carregar a biblioteca). Tente de novo.'); }
+}
+function pdfTopo(doc, W, titulo, sub) {
+  const M = 14;
+  doc.setFillColor(22, 87, 63); doc.rect(M, 12, 7, 7, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(23, 33, 28); doc.text('Gabinete da Vereadora Marta Lacerda', M + 10, 15.6);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(86, 101, 94); doc.text(pdfTxt('Câmara Municipal de Campo Sereno · Recepção'), M + 10, 19.4);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(23, 33, 28); doc.text(pdfTxt(titulo), M, 30);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(86, 101, 94); doc.text(pdfTxt(sub), M, 35.5);
+}
+function pdfRodape(doc, W, Hh, aviso) {
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i); doc.setDrawColor(215, 221, 218); doc.setLineWidth(.2); doc.line(14, Hh - 14, W - 14, Hh - 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(86, 101, 94);
+    doc.text(doc.splitTextToSize(pdfTxt(aviso), W - 50), 14, Hh - 10); doc.text(`Página ${i} de ${n}`, W - 14, Hh - 10, { align: 'right' });
+  }
+}
+
+/* ---------- declaração de comparecimento ---------- */
+async function gerarDeclaracao(ref, fin) {
+  const k = ref[0] === 'k' ? D.checkins.find(x => x.id === +ref.slice(1)) : null, v = k ? byId('visitas', k.visita) : byId('visitas', +ref.slice(1));
+  const cid = k ? k.contato : v.contato, c = byId('contatos', cid) || {}, cpf = (k && k.cpf) || c.cpf || '';
+  const data = k ? k.data : v.data, dv = pd(data), atd = k ? k.atendente : v.atendente, protocolo = v ? v.protocolo || '' : '';
+  const ext = `${dv.getDate()} de ${MES[dv.getMonth()]} de ${dv.getFullYear()}`;
+  let texto = `Declaramos, para os devidos fins, que ${c.nome || k.nome}${cpf ? `, CPF ${cpfFmt(cpf)},` : ''} compareceu ao Gabinete da Vereadora Marta Lacerda, na Câmara Municipal de Campo Sereno, no dia ${ext}`;
+  if (k) {
+    texto += `, com check-in registrado na recepção às ${fT(k.chegada)}.`;
+    texto += k.status === 'Atendido' ? ` O atendimento ocorreu das ${fT(k.inicio)} às ${fT(k.fim)}, com ${mName(atd)}${protocolo ? `, registro ${protocolo}` : ''}.` : ` Não houve atendimento: a saída foi registrada às ${fT(k.fim)}.`;
+  } else texto += `, conforme registro lançado depois pela equipe do gabinete${protocolo ? ` (${protocolo})` : ''}, sem horário de chegada.`;
+  if (k && ((k.correcoes && k.correcoes.length) || (k.saida && k.saida.informado))) texto += ` Os horários incluem ${k.correcoes && k.correcoes.length ? 'correção feita pela equipe' : 'horário de saída informado pela equipe'}; o registro original consta da trilha de eventos do sistema.`;
+  const agoraT = agora(), dados = { nome: c.nome, cpf: cpfDig(cpf), data, chegada: k ? k.chegada : null, inicio: k ? k.inicio : null, fim: k ? k.fim : null, status: k ? k.status : 'Registro manual', protocolo, emitido: agoraT };
+  const codigo = await prCodigo(dados);
+  let jsPDF; try { jsPDF = await jsPDFLib(); } catch (e) { toast('Sem conexão para gerar o PDF. Tente de novo em instantes.'); return; }
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' }), W = 210, M = 24;
+  pdfTopo(doc, W, '', ''); doc.setDrawColor(22, 87, 63); doc.setLineWidth(.6); doc.line(14, 24, W - 14, 24);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(23, 33, 28); doc.text('DECLARAÇÃO DE COMPARECIMENTO', W / 2, 52, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setLineHeightFactor(1.6);
+  const linhas = doc.splitTextToSize(pdfTxt(texto), W - 2 * M); doc.text(linhas, M, 72, { align: 'justify', maxWidth: W - 2 * M });
+  let y = 72 + linhas.length * 12 * 1.6 * .3528 + 14;
+  doc.setFontSize(11); doc.text(pdfTxt(`Campo Sereno, ${new Date().getDate()} de ${MES[new Date().getMonth()]} de ${new Date().getFullYear()}.`), M, y);
+  y += 30; doc.setDrawColor(86, 101, 94); doc.setLineWidth(.3); doc.line(W / 2 - 40, y, W / 2 + 40, y);
+  doc.setFontSize(10); doc.text(pdfTxt(mName(USUARIO)), W / 2, y + 5.5, { align: 'center' }); doc.setTextColor(86, 101, 94); doc.text(pdfTxt('Recepção do gabinete'), W / 2, y + 10.5, { align: 'center' });
+  doc.setFillColor(242, 244, 243); doc.rect(M, 236, W - 2 * M, 22, 'F');
+  doc.setFont('courier', 'bold'); doc.setFontSize(11); doc.setTextColor(22, 87, 63); doc.text(`Código de verificação: ${codigo}`, M + 5, 244);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.8); doc.setTextColor(86, 101, 94);
+  doc.text(doc.splitTextToSize(pdfTxt('Resumo SHA-256 dos dados deste registro, emitido em ' + fDH(agoraT) + '. O gabinete confere o código no próprio sistema. Neste protótipo não há conferência on-line.'), W - 2 * M - 10), M + 5, 249.5);
+  pdfRodape(doc, W, 297, `Documento com dados pessoais (LGPD), emitido para: ${fin}. Gerado por ${mName(USUARIO)} em ${fDH(agoraT)}.`);
+  registrar('trilha', 'Declaração emitida', { contato: cid, nome: c.nome || k.nome, data }, { finalidade: fin, codigo, cpf: 'Completo', hashDosDados: sha256hex(JSON.stringify(dados)) });
+  save(); closeDrawer(); render();
+  await baixar(`Declaração de comparecimento ${c.nome || k.nome} ${fD(data).replace(/\//g, '-')}.pdf`, doc.output('blob'), 'Declaração salva');
+}
+
+/* ---------- rotas e ações ---------- */
+ROUTES.presenca = { t: 'Presença', g: 'Atendimento', r: vPresenca };
+{ const A = AREAS.find(a => a.k === 'atend'); if (!A.p.includes('presenca')) A.p.splice(A.p.indexOf('recepcao') + 1, 0, 'presenca'); }
+PAGE_DESC.presenca = 'Horários, atendidos, saídas, mensagens e declarações';
+document.addEventListener('click', e => {
+  const wl = e.target.closest('.pr-wa-link');
+  if (wl) { const k = D.checkins.find(x => x.id === +wl.dataset.kid); if (k && !k.retorno) { k.retornoAbertoEm = agora(); save(); setTimeout(() => openSaidaInfo(k.id), 0); } return; }
+  const a = e.target.closest('[data-act^="pr-"]'); if (!a) return;
+  const id = +a.dataset.id || 0, st = prSt();
+  switch (a.dataset.act) {
+    case 'pr-tab': st.tab = a.dataset.k; render(); break;
+    case 'pr-rapido': st.ate = hoje(); st.de = iso(addDays(new Date(new Date().setHours(0, 0, 0, 0)), -(+a.dataset.d - 1))); render(); break;
+    case 'pr-sel': st.pessoa = id; if (id) auditar('Presença de pessoa consultada', { contato: id, nome: cName(id) }, { busca: st.q || '' }); render(); break;
+    case 'pr-pessoa': closeDrawer(); Object.assign(st, { tab: 'pessoa', pessoa: id, q: '' }); if (cur() === 'presenca') render(); else location.hash = 'presenca'; break;
+    case 'pr-exp': openExport(a.dataset.f); break;
+    case 'pr-decl': openExport('pdf', a.dataset.k); break;
+    case 'pr-gerar': prGerar(); break;
+    case 'pr-saida-ok': {
+      const k = D.checkins.find(x => x.id === id), mot = (document.querySelector('input[name="pr-saida"]:checked') || {}).value, obs = $('#pr-saida-obs').value.trim();
+      if (mot === 'Outro' && !obs) return openSaida(id, 'Descreva o motivo na observação.');
+      const h = $('#pr-saida-h').value, reg = agora(), fim = h ? `${k.data}T${h}` : reg;
+      if (h && (fim < k.chegada.slice(0, 16) || fim > reg)) return openSaida(id, `O horário de saída precisa ficar entre a chegada (${fT(k.chegada)}) e agora.`);
+      k.saida = { etapa: k.status, motivo: mot, obs, espera: minEntre(k.chegada, fim), atendente: k.atendente, por: USUARIO, em: reg, informado: !!h && fim !== reg };
+      k.status = 'Saiu sem atendimento'; k.fim = fim; save(); closeDrawer(); toast(`Saída de ${first(k.nome)} registrada`); render(); break;
+    }
+    case 'pr-retorno': { const k = D.checkins.find(x => x.id === id); k.retorno = { em: agora(), texto: msgRetorno(k), via: 'canal' }; const cn = byId('canais', D.auto.visita.canal); if (cn) cn.msgsHoje++; save(); render(); openSaidaInfo(k.id, `Mensagem de retorno enviada para ${first(k.nome)}.`); break; }
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'pr-de' || t.id === 'pr-ate') { const st = prSt(); if (t.value) st[t.id === 'pr-de' ? 'de' : 'ate'] = t.value; if (st.de > st.ate) [st.de, st.ate] = [st.ate, st.de]; render(); }
+  else if (t.id === 'pr-fin') { $('#pr-fin-o-f').hidden = t.value !== 'Outra'; if (t.value === 'Outra') $('#pr-fin-o').focus(); }
+});
+document.addEventListener('input', e => { if (e.target.id === 'ckf-cpf') { const p = e.target.selectionStart === e.target.value.length; e.target.value = cpfFmt(e.target.value); if (p) e.target.setSelectionRange(e.target.value.length, e.target.value.length); } });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.pr tr[data-act]')) e.target.click(); });
+
+const prCss = document.createElement('style');
+prCss.textContent = `
+.pr-per{gap:10px}
+.pr-dt{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.pr-dt input{height:34px;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);padding:0 8px;color:var(--fg)}
+.pr-per .seg button{height:32px}
+.pr-cols{width:100%;height:auto;display:block;overflow:visible}
+.pr-cols path{fill:var(--series-2)}
+.pr-cols .pk path{fill:var(--accent)}
+.pr-cols .pr-bar:hover path{fill:var(--accent-hover)}
+.pr-cols .pr-base{stroke:var(--line-strong);stroke-width:1}
+.pr-cols .pr-ax{fill:var(--muted);font-size:11px;font-family:var(--font-ui)}
+.pr-cols .pr-pkl{fill:var(--fg);font-size:12px;font-weight:600;font-family:var(--font-ui)}
+.pr-tab{margin-top:8px;font-size:12.5px}
+.pr-tab summary{cursor:pointer;color:var(--muted)}
+.pr-tab table{margin-top:6px;max-width:320px}
+.pr-tab td{padding:4px 8px 4px 0}
+.pr .pill-tabs{margin-top:2px}
+.pr-lgpd{max-width:90ch}
+.pr-pessoa{display:grid;gap:14px}
+.pr-pessoa .money-strip>div{display:grid;gap:2px;align-content:start}
+.pr-pessoa .money-strip .v.pr-dts{font-size:15px}
+.pr-radios{border:0;margin:0;padding:0;display:grid;gap:6px}
+.pr-radios legend{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;padding:0}
+.pr-radios label{display:flex;gap:8px;align-items:center;cursor:pointer}
+.pr-radios input{accent-color:var(--accent);width:16px;height:16px;margin:0}
+.pr-vers{display:grid;gap:10px}
+.pr-ver{display:grid;gap:2px;padding:10px 12px;border-radius:var(--r);background:var(--ok-soft);color:var(--fg)}
+.pr-ver b{color:var(--ok)}
+.pr-ver.bad{background:var(--crit-soft)}
+.pr-ver.bad b{color:var(--crit)}
+.pr-ver span{font-size:12.5px;overflow-wrap:anywhere}
+.pr-ret{display:grid;gap:12px}
+.pr-pol{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;color:var(--muted);max-width:90ch}
+.pr-pol b{color:var(--fg)}
+.ck-demo{font-size:12.5px;color:var(--warn);background:var(--warn-soft);padding:8px 10px;border-radius:var(--r)}
+.ck-privacidade{font-size:12px;color:var(--muted);grid-column:1/-1;margin-top:-6px}
+@media (max-width:900px){.pr .money-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.pr .money-strip>div:nth-child(3){border-left:0}.pr .money-strip>div:nth-child(n+3){border-top:1px solid var(--line)}}
+`;
+document.head.appendChild(prCss);
+/* ---------- registro auditável: duas cadeias de eventos com hash encadeado ----------
+   eventos: o que acontece com os registros (criação, correção, cancelamento, encerramento)
+   trilha:  quem acessou, consultou, exportou ou mudou permissões e configurações
+   Nenhuma tela apaga ou edita evento. Correção vira evento novo, com justificativa. */
+const agoraS = () => { const d = new Date(); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const hashEv = e => sha256hex(JSON.stringify([e.n, e.em, e.fonte, e.por, e.tipo, e.ref, e.dados, e.ant]));
+function registrar(cadeia, tipo, ref, dados = {}) {
+  const L = D[cadeia], ant = L.length ? L[L.length - 1].hash : '0'.repeat(64);
+  const e = { n: L.length + 1, em: agoraS(), fonte: 'relógio do aparelho', por: cur() === 'checkin' ? 0 : USUARIO, tipo, ref, dados, ant };
+  e.hash = hashEv(e); L.push(e); return e;
+}
+function verificarCadeia(L) {
+  let ant = '0'.repeat(64);
+  for (const e of L || []) { if (e.ant !== ant || hashEv(e) !== e.hash) return { ok: false, n: e.n }; ant = e.hash; }
+  return { ok: true, total: (L || []).length, cabeca: ant };
+}
+const CKF = ['status', 'atendente', 'chegada', 'filaEm', 'inicio', 'fim', 'motivo', 'saida', 'retorno', 'retornoAbertoEm', 'cancelado'];
+const VF = ['data', 'motivo', 'atendente', 'resumo', 'encaminhamento', 'waEm', 'waAbertoEm', 'cancelado', 'demanda', 'contato'];
+const pega = (o, F) => Object.fromEntries(F.map(f => [f, o[f] === undefined ? null : JSON.parse(JSON.stringify(o[f]))]));
+const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+let SNAP = null, SNAP_D = null, JUSTIF = '';
+function foto() {
+  return { ck: Object.fromEntries(D.checkins.map(k => [k.id, pega(k, CKF)])), v: Object.fromEntries(D.visitas.map(v => [v.id, pega(v, VF)])),
+    u: Object.fromEntries((D.usuarios || []).map(u => [u.id, pega(u, ['nome', 'perfil', 'ativo', 'perms'])])), m: JSON.stringify([D.motivos, D.ckOutros]), r: JSON.stringify(D.retencao) };
+}
+const refCk = k => ({ checkin: k.id, senha: senhaTxt(k), data: k.data, contato: k.contato, nome: k.nome });
+const refV = v => ({ visita: v.id, protocolo: v.protocolo || '', data: v.data, contato: v.contato, nome: cName(v.contato) });
+const TRANS = { 'Na fila': 'Posto na fila', 'Em atendimento': 'Atendimento iniciado', 'Atendido': 'Atendimento concluído', 'Saiu sem atendimento': 'Saída registrada' };
+function iniciarRegistro() {
+  D.registro = []; D.trilha = [];
+  if (!D.retencao) D.retencao = { anos: 5, base: 'A confirmar com o jurídico do gabinete', bloqueio: false };
+  const resumo = { checkins: D.checkins.length, visitas: D.visitas.length, contatos: D.contatos.length };
+  registrar('registro', 'Carga inicial', { nota: 'registros anteriores à trilha' }, { ...resumo, hashDosDados: sha256hex(JSON.stringify([D.checkins, D.visitas])) });
+  registrar('trilha', 'Trilha iniciada', {}, resumo);
+}
+function anotarMudancas() {
+  if (SNAP_D !== D || !SNAP) { SNAP = foto(); SNAP_D = D; return; }
+  const ant = SNAP, now = foto(), just = JUSTIF; JUSTIF = '';
+  for (const k of D.checkins) {
+    const a = ant.ck[k.id], b = now.ck[k.id];
+    if (!a) { registrar('registro', 'Check-in registrado', refCk(k), { chegada: k.chegada, motivo: k.motivo, lgpd: !!k.lgpd }); continue; }
+    if (igual(a, b)) continue;
+    const mud = {}; CKF.forEach(f => { if (!igual(a[f], b[f])) mud[f] = [a[f], b[f]]; });
+    if (mud.status) {
+      const d = { de: a.status, para: b.status };
+      if (b.status === 'Na fila') d.atendente = mName(k.atendente);
+      if (b.status === 'Saiu sem atendimento' && k.saida) Object.assign(d, { motivo: k.saida.motivo, etapa: k.saida.etapa, horarioInformado: k.saida.informado ? k.fim : null, lancamentoPosterior: !!k.saida.informado });
+      registrar('registro', TRANS[b.status] || 'Situação alterada', refCk(k), d);
+      ['status', 'atendente', 'filaEm', 'inicio', 'fim', 'saida', 'visita'].forEach(f => delete mud[f]);
+    }
+    if (mud.retorno) { registrar('registro', 'Mensagem de retorno enviada', refCk(k), { canal: 'WhatsApp do gabinete' }); delete mud.retorno; }
+    if (mud.retornoAbertoEm) { registrar('registro', 'Conversa de retorno aberta no WhatsApp', refCk(k), { envioConfirmado: false }); delete mud.retornoAbertoEm; }
+    if (mud.cancelado) { registrar('registro', 'Registro cancelado', refCk(k), { justificativa: (k.cancelado || {}).justificativa }); delete mud.cancelado; }
+    if (Object.keys(mud).length) registrar('registro', 'Registro corrigido', refCk(k), { alteracoes: mud, justificativa: just || '(sem justificativa)', horarioInformado: true, lancamentoPosterior: true });
+  }
+  for (const v of D.visitas) {
+    const a = ant.v[v.id], b = now.v[v.id];
+    if (!a) {
+      registrar('registro', v.checkin ? 'Visita registrada' : 'Visita lançada manualmente', refV(v), v.checkin ? { checkin: v.checkin } : { dataInformada: v.data, lancamentoPosterior: true });
+      if (v.demanda) registrar('registro', 'Demanda vinculada', refV(v), { demanda: (byId('demandas', v.demanda) || {}).protocolo });
+      if (v.waEm) registrar('registro', 'Agradecimento enviado', refV(v), { canal: 'WhatsApp do gabinete' });
+      continue;
+    }
+    if (igual(a, b)) continue;
+    const mud = {}; VF.forEach(f => { if (!igual(a[f], b[f])) mud[f] = [a[f], b[f]]; });
+    if (mud.waEm) { registrar('registro', 'Agradecimento enviado', refV(v), { canal: 'WhatsApp do gabinete' }); delete mud.waEm; }
+    if (mud.waAbertoEm) { registrar('registro', 'Conversa de agradecimento aberta no WhatsApp', refV(v), { envioConfirmado: false }); delete mud.waAbertoEm; }
+    if (mud.cancelado) { registrar('registro', 'Registro cancelado', refV(v), { justificativa: (v.cancelado || {}).justificativa }); delete mud.cancelado; }
+    if (mud.demanda) { registrar('registro', 'Demanda vinculada', refV(v), { demanda: (byId('demandas', v.demanda) || {}).protocolo }); delete mud.demanda; }
+    if (Object.keys(mud).length) registrar('registro', 'Registro corrigido', refV(v), { alteracoes: mud, justificativa: just || '(sem justificativa)' });
+  }
+  for (const [id, b] of Object.entries(now.u)) {
+    const a = ant.u[id];
+    if (!a) registrar('trilha', 'Acesso criado', { usuario: +id, nome: b.nome }, { perfil: b.perfil });
+    else if (!igual(a, b)) registrar('trilha', 'Permissões alteradas', { usuario: +id, nome: b.nome }, Object.fromEntries(['perfil', 'ativo', 'perms'].filter(f => !igual(a[f], b[f])).map(f => [f, f === 'perms' ? Object.keys(b.perms).filter(g => a.perms[g] !== b.perms[g]).map(g => `${g}: ${a.perms[g]} → ${b.perms[g]}`) : [a[f], b[f]]])));
+  }
+  if (ant.m !== now.m) registrar('trilha', 'Lista de assuntos alterada', {}, { assuntos: D.motivos.map(m => m.nome), outros: D.ckOutros !== false });
+  if (ant.r !== now.r) registrar('trilha', 'Política de retenção alterada', {}, { ...D.retencao });
+  SNAP = foto();
+}
+{ // save() passa a anotar cada mudança antes de gravar
+  const _save = save;
+  save = function () { if (!D.registro) iniciarRegistro(); anotarMudancas(); _save(); };
+  const _seedExtra4 = seedExtra;
+  seedExtra = function () { const x = _seedExtra4(); x.registro = undefined; x.trilha = undefined; x.retencao = undefined; return x; };
+  window.seedExtra = seedExtra;
+  if (!D.registro) { iniciarRegistro(); SNAP = foto(); SNAP_D = D; _save(); } else { SNAP = foto(); SNAP_D = D; }
+  if (cur() !== 'checkin') { registrar('trilha', 'Sessão iniciada', { usuario: USUARIO, nome: mName(USUARIO) }, { perfil: perfilAtual(), autenticacao: 'sem login no protótipo' }); _save(); }
+}
+const auditar = (tipo, ref, dados) => { registrar('trilha', tipo, ref, dados); save(); };
+
+/* consultas relevantes a dados de pessoas entram na trilha */
+{ const _oc = openContato; openContato = function (id) { _oc(id); const c = byId('contatos', id); if (c) auditar('Ficha de contato consultada', { contato: id, nome: c.nome }, {}); }; }
+
+/* correção de horários, sempre com justificativa */
+function openCorrecao(kid, erro) {
+  const k = D.checkins.find(x => x.id === kid); if (!k) return;
+  const campo = (id, l, v) => v ? `<div class="fld"><label for="${id}">${l}</label><input type="time" id="${id}" value="${fT(v)}"></div>` : '';
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Corrigir registro · senha ${senhaTxt(k)} de ${fD(k.data)}</p><h2>${esc(k.nome)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <p class="callout">A correção não apaga o horário anterior: os dois ficam no registro de eventos, com a sua justificativa, e o horário corrigido passa a constar como informado pela equipe.</p>
+    <div class="fgrid">${campo('pr-c-cheg', 'Chegada', k.chegada)}${campo('pr-c-ini', 'Início do atendimento', k.inicio)}${campo('pr-c-fim', k.status === 'Atendido' ? 'Término' : 'Saída', k.fim)}</div>
+    <div class="fld"><label for="pr-c-just">Justificativa *</label><textarea id="pr-c-just" maxlength="300" placeholder="Ex.: o check-in foi feito pela recepção depois que o visitante já estava sendo atendido"></textarea></div>
+    <p class="ferr" ${erro ? '' : 'hidden'}>${esc(erro || '')}</p>
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Cancelar</button><button type="button" class="btn primary" data-act="pr-corrigir-ok" data-id="${kid}">Registrar correção</button></div></div>`);
+}
+function openCancelar(tipo, id, erro) {
+  const adm = ehAdmin();
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Cancelar registro</p><h2>${tipo === 'v' ? esc((byId('visitas', id) || {}).protocolo || 'Visita') : 'Check-in'}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <p class="callout">O registro não é apagado. Ele passa a constar como cancelado, sai das contagens e o cancelamento fica no registro de eventos com o seu nome e a justificativa. Só o perfil Administrador cancela.</p>
+    ${adm ? `<div class="fld"><label for="pr-cx-just">Justificativa *</label><textarea id="pr-cx-just" maxlength="300" placeholder="Ex.: registro duplicado da mesma visita"></textarea></div>` : `<p class="note">Seu perfil é ${esc(perfilAtual())}. Peça a um administrador.</p>`}
+    <p class="ferr" ${erro ? '' : 'hidden'}>${esc(erro || '')}</p>
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Voltar</button>${adm ? `<button type="button" class="btn primary" style="background:var(--crit);border-color:var(--crit)" data-act="pr-cancelar-ok" data-k="${tipo}${id}">Cancelar registro</button>` : ''}</div></div>`);
+}
+{ // botões de correção nas fichas
+  const _ovr = openVisitaReg;
+  openVisitaReg = function (vid, aviso) {
+    _ovr(vid, aviso); const v = byId('visitas', vid); if (!v) return;
+    const df = $('#drawer .df'); if (!df) return;
+    if (v.cancelado) $('#drawer .db').insertAdjacentHTML('afterbegin', `<p class="callout">Registro cancelado em ${fDH(v.cancelado.em)} por ${esc(mName(v.cancelado.por))}: ${esc(v.cancelado.justificativa)}</p>`);
+    df.insertAdjacentHTML('afterbegin', `${v.checkin ? `<button type="button" class="btn ghost" data-act="pr-corrigir" data-id="${v.checkin}">Corrigir horários</button>` : ''}${v.cancelado ? '' : `<button type="button" class="btn ghost danger" data-act="pr-cancelar" data-k="v${v.id}">Cancelar registro</button>`}`);
+  };
+  const _osi = openSaidaInfo;
+  openSaidaInfo = function (id, aviso) {
+    _osi(id, aviso); const k = D.checkins.find(x => x.id === id); if (!k) return;
+    if (k.cancelado) $('#drawer .db').insertAdjacentHTML('afterbegin', `<p class="callout">Registro cancelado em ${fDH(k.cancelado.em)} por ${esc(mName(k.cancelado.por))}: ${esc(k.cancelado.justificativa)}</p>`);
+    $('#drawer .df').insertAdjacentHTML('afterbegin', `<button type="button" class="btn ghost" data-act="pr-corrigir" data-id="${k.id}">Corrigir horários</button>${k.cancelado ? '' : `<button type="button" class="btn ghost danger" data-act="pr-cancelar" data-k="k${k.id}">Cancelar registro</button>`}`);
+  };
+}
+// edição de visita pelo formulário padrão: exige justificativa; exclusão vira cancelamento
+{
+  const _of = openForm;
+  openForm = function (type, id, preset) {
+    _of(type, id, preset);
+    if (type === 'visita' && id) $('#frm .fgrid').insertAdjacentHTML('beforeend', '<div class="fld w2"><label for="fld-justif">Justificativa da correção *</label><textarea id="fld-justif" maxlength="300" placeholder="O que estava errado e por que foi corrigido"></textarea><span class="hint">Fica no registro de eventos junto com os valores antigos.</span></div>');
+  };
+}
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'frm' || e.target.dataset.type !== 'visita' || !e.target.dataset.id) return;
+  const j = $('#fld-justif'); if (!j) return;
+  if (j.value.trim().length < 10) { e.preventDefault(); e.stopImmediatePropagation(); const p = $('#ferr'); p.textContent = 'Escreva a justificativa da correção (ao menos 10 caracteres).'; p.hidden = false; j.focus(); return; }
+  JUSTIF = j.value.trim();
+}, true);
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act="del"],[data-act="reset"],[data-act="reset-ok"]'); if (!a) return;
+  if (a.dataset.act === 'del' && a.dataset.type === 'visita') { e.preventDefault(); e.stopImmediatePropagation(); closeDrawer(); openCancelar('v', +a.dataset.id); return; }
+  if (a.dataset.act === 'del' && a.dataset.type === 'contato') {
+    const id = +a.dataset.id;
+    if (D.checkins.some(k => k.contato === id) || D.visitas.some(v => v.contato === id)) { e.preventDefault(); e.stopImmediatePropagation(); toast('Este contato tem registros de presença. A eliminação segue a política de retenção e não pode ser feita por aqui.'); }
+    return;
+  }
+  if ((a.dataset.act === 'reset' || a.dataset.act === 'reset-ok') && D.retencao && D.retencao.bloqueio) { e.preventDefault(); e.stopImmediatePropagation(); toast('Bloqueio de eliminação ligado: os dados não podem ser apagados.'); }
+}, true);
+
+/* ---------- aba Auditoria ---------- */
+function prAuditoria() {
+  const st = prSt(), sub = st.aud || 'registro', ve = verificarCadeia(D.registro), vt = verificarCadeia(D.trilha), R = D.retencao, adm = ehAdmin();
+  const estado = (v, nome) => `<div class="pr-ver ${v.ok ? 'ok' : 'bad'}"><b>${v.ok ? 'Íntegro' : 'Alterado'}</b><span>${nome}: ${v.ok ? `${fN(v.total)} eventos encadeados, último hash <span class="mono">${v.cabeca.slice(0, 12)}…</span>` : `a cadeia quebra no evento nº ${v.n}. Algum registro foi alterado fora do sistema.`}</span></div>`;
+  const vencidos = D.checkins.filter(k => k.data < iso(new Date(new Date().getFullYear() - R.anos, new Date().getMonth(), new Date().getDate()))).length;
+  const vr = st.verif;
+  return `<div class="grid-2">
+    <section class="panel"><div class="panel-h"><h2>Integridade dos registros</h2><span class="meta">conferido agora</span></div><div class="panel-b pr-vers">${estado(ve, 'Registro de eventos')}${estado(vt, 'Trilha de auditoria')}
+      <p class="note">Cada evento guarda o hash do anterior (SHA-256). Mudar ou apagar qualquer evento antigo quebra a cadeia daquele ponto em diante.</p></div></section>
+    <section class="panel"><div class="panel-h"><h2>Verificar um arquivo exportado</h2></div><div class="panel-b pr-vers">
+      <p class="note">Envie uma planilha exportada daqui ou um pacote de preservação. O sistema recalcula o hash e confere com o registro da exportação.</p>
+      <label class="btn" style="justify-self:start">Escolher arquivo<input type="file" id="pr-verif" accept=".xlsx,.json" hidden></label>
+      ${vr ? `<div class="pr-ver ${vr.ok ? 'ok' : 'bad'}"><b>${vr.ok ? 'Confere' : 'Não confere'}</b><span>${esc(vr.nome)}: ${esc(vr.msg)}</span></div>` : ''}
+    </div></section>
+    <section class="panel span-2"><div class="panel-h"><h2>Retenção e preservação</h2>${adm ? '' : '<span class="meta">só o Administrador altera</span>'}</div><div class="panel-b pr-ret">
+      <div class="fgrid">
+        <div class="fld"><label for="pr-ret-anos">Prazo de guarda dos registros de presença (anos)</label><input type="number" id="pr-ret-anos" min="1" max="30" value="${R.anos}" ${adm ? '' : 'disabled'}></div>
+        <div class="fld"><label for="pr-ret-base">Base do prazo</label><input id="pr-ret-base" maxlength="160" value="${esc(R.base)}" ${adm ? '' : 'disabled'}></div>
+      </div>
+      <label class="switch"><input type="checkbox" id="pr-ret-bloq" ${R.bloqueio ? 'checked' : ''} ${adm ? '' : 'disabled'}>Bloqueio de eliminação (preservação por pedido judicial, auditoria ou investigação)</label>
+      <ul class="pr-pol">
+        <li>Nenhum registro de presença, evento ou trilha é apagado pelas telas. Correção e cancelamento geram eventos novos.</li>
+        <li>Vencido o prazo, os registros são anonimizados, com aprovação de dois administradores e evento próprio. Hoje há <b>${fN(vencidos)}</b> registros vencidos.</li>
+        <li>Com o bloqueio ligado, nada é anonimizado nem apagado, nem pela opção de restaurar dados.</li>
+        <li>Na troca de sistema ou de servidor, os dados saem no pacote de preservação, com as duas cadeias de hash para conferência no destino.</li>
+      </ul>
+      <div class="ck-act">${adm ? '<button type="button" class="btn primary" data-act="pr-ret-salvar">Salvar política</button>' : ''}<button type="button" class="btn" data-act="pr-pacote" ${adm ? '' : 'disabled title="Só o perfil Administrador"'}>Baixar pacote de preservação (.json)</button></div>
+    </div></section>
+  </div>
+  <div class="pill-tabs">${[['registro', 'Registro de eventos', D.registro.length], ['trilha', 'Trilha de auditoria', D.trilha.length]].map(([k, l, n]) => `<button type="button" class="${sub === k ? 'on' : ''}" data-act="pr-aud" data-k="${k}">${l}<span class="num">${fN(n)}</span></button>`).join('')}</div>
+  ${prTabela(prDados(sub, { cpf: 'mascarado' }), 'log')}
+  <section class="panel"><div class="panel-h"><h2>Limitações registradas</h2></div><div class="panel-b"><ul class="pr-pol">
+    <li><b>Horários:</b> “Registrado em” é o horário em que o sistema gravou o evento. “Informado” é um horário digitado pela equipe (saída anotada depois, correção). Visitas cadastradas à mão contam como lançamento posterior.</li>
+    <li><b>Neste protótipo</b> o relógio é o do aparelho, os dados ficam no navegador e não há login. Na versão final, o horário vem do servidor, cada pessoa entra com senha e segundo fator, e as cadeias ficam num banco separado, sem permissão de alteração nem para os administradores.</li>
+    <li>Criptografia em repouso, cópias de segurança e plano de resposta a incidentes dependem do servidor e constam do plano de implantação.</li>
+  </ul></div></section>`;
+}
+function prDadosAud(sub) {
+  const L = sortBy(D[sub], e => e.n, -1), refTxt = r => r ? [r.protocolo || (r.senha ? `Senha ${r.senha}` : ''), r.data ? fD(r.data) : '', r.nome || ''].filter(Boolean).join(' · ') : '';
+  const det = d => Object.entries(d || {}).map(([k, v]) => `${k}: ${typeof v === 'object' && v !== null ? JSON.stringify(v) : v}`).join('; ');
+  if (sub === 'registro') return { titulo: 'Registro de eventos', todo: true, cols: ['Nº', 'Registrado em', 'Evento', 'Registro', 'Detalhes', 'Horário informado', 'Por', 'Hash'], num: [0],
+    rows: L.map(e => [e.n, e.em.replace('T', ' '), e.tipo, refTxt(e.ref), det(e.dados), e.dados && (e.dados.horarioInformado || e.dados.dataInformada) ? (e.dados.horarioInformado === true ? 'sim, corrigido' : String(e.dados.horarioInformado || e.dados.dataInformada).replace('T', ' ')) + (e.dados.lancamentoPosterior ? ' (lançamento posterior)' : '') : '—', porNome(e.por), e.hash.slice(0, 16)]) };
+  return { titulo: 'Trilha de auditoria', todo: true, cols: ['Nº', 'Registrado em', 'Ação', 'Sobre', 'Detalhes', 'Por', 'Hash'], num: [0],
+    rows: L.map(e => [e.n, e.em.replace('T', ' '), e.tipo, refTxt(e.ref) || (e.ref && e.ref.nome) || '', det(e.dados), porNome(e.por), e.hash.slice(0, 16)]) };
+}
+function pacotePreservacao(fin) {
+  const ve = verificarCadeia(D.registro), vt = verificarCadeia(D.trilha);
+  const p = { formato: 'gestao-de-mandato/pacote-de-preservacao', versao: 1, geradoEm: agoraS(), fonteDoHorario: 'relógio do aparelho', geradoPor: mName(USUARIO), finalidade: fin, politica: D.retencao,
+    cadeias: { eventos: { total: ve.total, cabeca: ve.cabeca, integra: ve.ok }, trilha: { total: vt.total, cabeca: vt.cabeca, integra: vt.ok } },
+    registros: { checkins: D.checkins, visitas: D.visitas, contatos: D.contatos.filter(c => D.checkins.some(k => k.contato === c.id) || D.visitas.some(v => v.contato === c.id)).map(c => pega(c, ['id', 'nome', 'cpf', 'telefone', 'bairro', 'endereco', 'lgpd', 'criadoEm'])) },
+    eventos: D.registro, trilha: D.trilha };
+  const c = JSON.parse(JSON.stringify(p)); // cópia: o registro desta exportação entra na trilha depois
+  Object.assign(p, c);
+  p.hashDoConteudo = sha256hex(JSON.stringify([p.registros, p.eventos, p.trilha]));
+  return p;
+}
+async function verificarArquivo(file) {
+  const st = prSt(), nome = file.name;
+  try {
+    if (/\.json$/i.test(nome)) {
+      const p = JSON.parse(await file.text());
+      if (p.formato !== 'gestao-de-mandato/pacote-de-preservacao') throw new Error('formato');
+      const ve = verificarCadeia(p.eventos), vt = verificarCadeia(p.trilha), hc = sha256hex(JSON.stringify([p.registros, p.eventos, p.trilha])) === p.hashDoConteudo;
+      st.verif = { ok: ve.ok && vt.ok && hc, nome, msg: ve.ok && vt.ok && hc ? `pacote íntegro, ${fN(p.eventos.length)} eventos e ${fN(p.trilha.length)} ações de auditoria, gerado em ${p.geradoEm.replace('T', ' ')} por ${p.geradoPor}.` : `o conteúdo foi alterado depois de gerado${!ve.ok ? ` (eventos, a partir do nº ${ve.n})` : ''}${!vt.ok ? ` (trilha, a partir do nº ${vt.n})` : ''}.` };
+    } else {
+      await carregar('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' }), dados = wb.Sheets['Dados'], sobre = wb.Sheets['Sobre'];
+      if (!dados || !sobre) throw new Error('formato');
+      const meta = Object.fromEntries(XLSX.utils.sheet_to_json(sobre, { header: 1, defval: '' }).map(r => [r[0], r[1]]));
+      const aoa = XLSX.utils.sheet_to_json(dados, { header: 1, defval: '', raw: true }), nc = (aoa[0] || []).length;
+      const hash = sha256hex(JSON.stringify(aoa.map(r => r.slice(0, nc))));
+      const reg = D.trilha.find(e => e.tipo === 'Exportação' && e.dados.hashDosDados === hash);
+      st.verif = hash !== meta['Hash SHA-256 dos dados'] ? { ok: false, nome, msg: 'os dados da planilha não batem com o hash gravado nela. Alguma célula foi alterada depois da exportação.' }
+        : reg ? { ok: true, nome, msg: `dados intactos. Exportação nº ${reg.n} da trilha, feita em ${reg.em.replace('T', ' ')} por ${mName(reg.por)}, finalidade: ${reg.dados.finalidade}.` }
+        : { ok: false, nome, msg: 'a planilha está íntegra, mas a exportação não consta na trilha deste sistema. Ela pode ter sido gerada em outro aparelho ou outra instalação.' };
+    }
+  } catch (err) { st.verif = { ok: false, nome, msg: 'arquivo não reconhecido. Use uma planilha exportada pela página Presença ou um pacote de preservação.' }; }
+  auditar('Arquivo verificado', { arquivo: nome }, { resultado: st.verif.ok ? 'confere' : 'não confere' });
+  render();
+}
+document.addEventListener('change', e => { if (e.target.id === 'pr-verif' && e.target.files[0]) verificarArquivo(e.target.files[0]); });
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act^="pr-"]'); if (!a) return;
+  const id = +a.dataset.id || 0;
+  switch (a.dataset.act) {
+    case 'pr-aud': prSt().aud = a.dataset.k; render(); break;
+    case 'pr-corrigir': openCorrecao(id); break;
+    case 'pr-corrigir-ok': {
+      const k = D.checkins.find(x => x.id === id), just = $('#pr-c-just').value.trim(), novo = {};
+      if (just.length < 10) return openCorrecao(id, 'Escreva a justificativa (ao menos 10 caracteres).');
+      [['pr-c-cheg', 'chegada'], ['pr-c-ini', 'inicio'], ['pr-c-fim', 'fim']].forEach(([i, f]) => { const el = $('#' + i); if (el && el.value && el.value !== fT(k[f])) novo[f] = `${k.data}T${el.value}`; });
+      if (!Object.keys(novo).length) return openCorrecao(id, 'Nenhum horário mudou.');
+      const t = { ...pega(k, ['chegada', 'inicio', 'fim']), ...novo };
+      if ((t.inicio && t.inicio < t.chegada) || (t.fim && t.fim < (t.inicio || t.chegada))) return openCorrecao(id, 'Os horários ficaram fora de ordem: chegada, início e término.');
+      k.correcoes = [...(k.correcoes || []), { em: agoraS(), por: USUARIO, antes: pega(k, Object.keys(novo)), depois: novo, justificativa: just }];
+      Object.assign(k, novo); JUSTIF = just; save(); closeDrawer(); toast('Correção registrada'); render(); break;
+    }
+    case 'pr-cancelar': openCancelar(a.dataset.k[0], +a.dataset.k.slice(1)); break;
+    case 'pr-cancelar-ok': {
+      if (!ehAdmin()) return;
+      const t = a.dataset.k[0], rid = +a.dataset.k.slice(1), just = $('#pr-cx-just').value.trim();
+      if (just.length < 10) return openCancelar(t, rid, 'Escreva a justificativa (ao menos 10 caracteres).');
+      const marca = { em: agoraS(), por: USUARIO, justificativa: just };
+      if (t === 'v') { const v = byId('visitas', rid); v.cancelado = marca; const k = v.checkin && D.checkins.find(x => x.id === v.checkin); if (k) k.cancelado = marca; }
+      else { const k = D.checkins.find(x => x.id === rid); k.cancelado = marca; const v = k.visita && byId('visitas', k.visita); if (v) v.cancelado = marca; }
+      save(); closeDrawer(); toast('Registro cancelado e anotado no registro de eventos'); render(); break;
+    }
+    case 'pr-ret-salvar': {
+      if (!ehAdmin()) return;
+      const anos = Math.max(1, Math.min(30, +$('#pr-ret-anos').value || 5));
+      D.retencao = { anos, base: $('#pr-ret-base').value.trim() || 'A confirmar com o jurídico do gabinete', bloqueio: $('#pr-ret-bloq').checked };
+      save(); toast('Política salva'); render(); break;
+    }
+    case 'pr-pacote': if (ehAdmin()) openExport('json'); break;
+  }
+});
 render();
 </script>
 <script>
