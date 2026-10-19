@@ -3021,7 +3021,7 @@ function vInicio() {
     gestao: `${D.despesas.filter(d => !d.pago && d.vencimento < T0).length} despesas vencidas`
   };
   return `<div class="wrap">
-  <header class="ph"><div><p class="eyebrow">${DIA[TODAY.getDay()]}, ${TODAY.getDate()} de ${MES[TODAY.getMonth()]}</p><h1>${sauda}, Renata</h1><p class="sub">Escolha uma área para começar.</p></div></header>
+  <header class="ph"><div><p class="eyebrow">${DIA[TODAY.getDay()]}, ${TODAY.getDate()} de ${MES[TODAY.getMonth()]}</p><h1>${sauda}, ${esc(first(typeof USUARIO !== 'undefined' ? mName(USUARIO) : 'Renata'))}</h1><p class="sub">Escolha uma área para começar.</p></div></header>
   <div class="tiles">${AREAS.map(a => `<section class="tile"><a class="tile-h" href="#${a.p[0]}">${icon(a.ic, 22)}<span><b>${a.t}</b><span class="note">${a.d}</span></span></a><p class="tile-info">${esc(info[a.k] || '')}</p><div class="tile-links">${a.p.filter(k => ROUTES[k] && !ROUTES[k].hide).slice(0, 5).map(k => `<a href="#${k}">${esc(ROUTES[k].t)}</a>`).join('')}</div></section>`).join('')}</div></div>`;
 }
 ROUTES.inicio = { t: 'Áreas', g: 'Início', r: vInicio, hide: true };
@@ -3043,7 +3043,7 @@ function vPainel2() {
   const qa = (type, l, ic) => `<button type="button" class="qa" data-act="new" data-type="${type}">${icon(ic, 18)}<span>${l}</span></button>`;
   const evRow = e => `<li class="click" data-act="open" data-type="evento" data-id="${e.id}"><span class="mono note" style="width:44px">${fT(e.inicio)}</span><span class="grow"><span class="t">${esc(e.titulo)}</span><span class="s">${e.inicio.startsWith(T0) ? 'Hoje' : 'Amanhã'} · ${esc(e.local)}</span></span><span class="chip plain t${evTipoIdx(e.tipo)}">${esc(e.tipo)}</span></li>`;
   return `<div class="wrap">
-  <header class="ph"><div><p class="eyebrow">${DIA[TODAY.getDay()]}, ${TODAY.getDate()} de ${MES[TODAY.getMonth()]}</p><h1>${sauda}, Renata</h1><p class="sub">${atras.length ? `${atras.length} demandas passaram do prazo e ${hojeAm.filter(e => e.inicio.startsWith(T0)).length} compromissos estão marcados para hoje.` : 'Nenhuma demanda atrasada.'}</p></div></header>
+  <header class="ph"><div><p class="eyebrow">${DIA[TODAY.getDay()]}, ${TODAY.getDate()} de ${MES[TODAY.getMonth()]}</p><h1>${sauda}, ${esc(first(typeof USUARIO !== 'undefined' ? mName(USUARIO) : 'Renata'))}</h1><p class="sub">${atras.length ? `${atras.length} demandas passaram do prazo e ${hojeAm.filter(e => e.inicio.startsWith(T0)).length} compromissos estão marcados para hoje.` : 'Nenhuma demanda atrasada.'}</p></div></header>
   <div class="qas">${qa('demanda', 'Registrar demanda', 'inbox')}${qa('evento', 'Novo compromisso', 'cal')}${qa('contato', 'Novo contato', 'users')}${qa('disparo', 'Novo disparo', 'msg')}</div>
   <section class="kpis">
     <a class="kpi" href="#demandas"><span class="l">Demandas em aberto</span><span class="v">${abertas.length}</span><span class="d ${atras.length ? 'bad' : ''}">${atras.length} com prazo vencido</span></a>
@@ -3672,7 +3672,7 @@ function vRecepcao() {
     'Chegou': k => `${cab(k)}<div class="m">${esp(k.chegada, 'chegou há')}<button type="button" class="linkbtn" data-act="ck-saiu" data-id="${k.id}">Saiu</button></div>
       <div class="ck-act"><select id="ck-at-${k.id}" aria-label="Quem vai atender ${esc(k.nome)}">${D.equipe.map(m => quem(m, k)).join('')}</select><button type="button" class="btn sm primary" data-act="ck-fila" data-id="${k.id}">Pôr na fila</button></div>`,
     'Na fila': k => { const pos = abertos('Na fila').filter(x => x.atendente === k.atendente).findIndex(x => x.id === k.id) + 1;
-      return `${cab(k)}<div class="m"><span>${pos}º para <b>${esc(first(mName(k.atendente)))}</b></span>${esp(k.chegada, 'espera')}</div>
+      return `${cab(k)}<div class="m"><span>${pos}º para <b>${esc(first(mName(k.atendente)))}</b></span>${esp(k.chegada, 'espera')}</div>${typeof avisoSituacao === 'function' ? avisoSituacao(k) : ''}
       <div class="ck-act"><button type="button" class="btn sm primary" data-act="ck-iniciar" data-id="${k.id}">Iniciar atendimento</button><button type="button" class="linkbtn" data-act="ck-saiu" data-id="${k.id}">Saiu</button></div>`; },
     'Em atendimento': k => `${cab(k)}<div class="m"><span>com <b>${esc(first(mName(k.atendente)))}</b></span>${esp(k.inicio, 'há')}</div>
       <div class="ck-act"><button type="button" class="btn sm primary" data-act="ck-concluir" data-id="${k.id}">Concluir e registrar</button></div>`,
@@ -3833,7 +3833,7 @@ document.addEventListener('click', e => {
   switch (a.dataset.act) {
     case 'ck-qr': openQR(); break;
     case 'ck-cartaz': pdfCartaz(); break;
-    case 'ck-fila': k.atendente = +$(`#ck-at-${id}`).value; k.status = 'Na fila'; k.filaEm = agora(); save(); toast(`${first(k.nome)} na fila de ${first(mName(k.atendente))}`); render(); break;
+    case 'ck-fila': k.atendente = +$(`#ck-at-${id}`).value; k.status = 'Na fila'; k.filaEm = agora(); k.aviso = { para: k.atendente, enviadoEm: agoraS(), exibidoEm: null, cienteEm: null }; save(); toast(`${first(k.nome)} na fila de ${first(mName(k.atendente))}`); render(); break;
     case 'ck-iniciar': k.status = 'Em atendimento'; k.inicio = agora(); save(); toast(`Atendimento de ${first(k.nome)} iniciado`); render(); break;
     case 'ck-saiu': openSaida(id); break;
     case 'ck-concluir': openConcluir(id); break;
@@ -4141,7 +4141,8 @@ function sha256hex(texto) {
   }
   return H.map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
 }
-const USUARIO = 2; // quem está usando o sistema na demonstração (Renata Coelho)
+// quem está usando esta aba (demonstração, sem login): escolhido no nome do usuário, no topo
+const USUARIO = (() => { try { return +sessionStorage.getItem('gm-usuario') || 2; } catch (e) { return 2; } })();
 const perfilAtual = () => ((D.usuarios || []).find(u => u.id === USUARIO) || {}).perfil || 'Equipe';
 const ehAdmin = () => perfilAtual() === 'Administrador';
 const podeExportar = () => perfilAtual() !== 'Somente leitura';
@@ -4625,7 +4626,7 @@ function verificarCadeia(L) {
   for (const e of L || []) { if (e.ant !== ant || hashEv(e) !== e.hash) return { ok: false, n: e.n }; ant = e.hash; }
   return { ok: true, total: (L || []).length, cabeca: ant };
 }
-const CKF = ['status', 'atendente', 'chegada', 'filaEm', 'inicio', 'fim', 'motivo', 'saida', 'retorno', 'retornoAbertoEm', 'cancelado'];
+const CKF = ['status', 'atendente', 'chegada', 'filaEm', 'inicio', 'fim', 'motivo', 'saida', 'retorno', 'retornoAbertoEm', 'cancelado', 'aviso'];
 const VF = ['data', 'motivo', 'atendente', 'resumo', 'encaminhamento', 'waEm', 'waAbertoEm', 'cancelado', 'demanda', 'contato'];
 const pega = (o, F) => Object.fromEntries(F.map(f => [f, o[f] === undefined ? null : JSON.parse(JSON.stringify(o[f]))]));
 const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -4658,6 +4659,13 @@ function anotarMudancas() {
       if (b.status === 'Saiu sem atendimento' && k.saida) Object.assign(d, { motivo: k.saida.motivo, etapa: k.saida.etapa, horarioInformado: k.saida.informado ? k.fim : null, lancamentoPosterior: !!k.saida.informado });
       registrar('registro', TRANS[b.status] || 'Situação alterada', refCk(k), d);
       ['status', 'atendente', 'filaEm', 'inicio', 'fim', 'saida', 'visita'].forEach(f => delete mud[f]);
+    }
+    if (mud.aviso) {
+      const [x, y] = mud.aviso;
+      if (y && (!x || x.para !== y.para || x.enviadoEm !== y.enviadoEm)) registrar('registro', 'Aviso de fila enviado', refCk(k), { para: mName(y.para) });
+      if (y && y.exibidoEm && (!x || !x.exibidoEm || x.para !== y.para)) registrar('registro', 'Aviso exibido ao atendente', refCk(k), { para: mName(y.para), exibidoEm: y.exibidoEm });
+      if (y && y.cienteEm && (!x || !x.cienteEm)) registrar('registro', 'Aviso confirmado pelo atendente', refCk(k), { para: mName(y.para), cienteEm: y.cienteEm, como: y.como || 'Ciente' });
+      delete mud.aviso;
     }
     if (mud.retorno) { registrar('registro', 'Mensagem de retorno enviada', refCk(k), { canal: 'WhatsApp do gabinete' }); delete mud.retorno; }
     if (mud.retornoAbertoEm) { registrar('registro', 'Conversa de retorno aberta no WhatsApp', refCk(k), { envioConfirmado: false }); delete mud.retornoAbertoEm; }
@@ -4950,6 +4958,176 @@ ambCss.textContent = `
 @media (max-width:1000px){.amb-cards{grid-template-columns:minmax(0,1fr)}}
 `;
 document.head.appendChild(ambCss);
+render();
+</script>
+<script>
+/* =====================================================================
+   v14: aviso sonoro e visual para quem foi designado a atender
+   ===================================================================== */
+const AV_PREF_KEY = `gm-aviso-${USUARIO}`;
+const avPref = (() => { try { return { som: true, volume: .6, repetir: true, ...JSON.parse(localStorage.getItem(AV_PREF_KEY) || '{}') }; } catch (e) { return { som: true, volume: .6, repetir: true }; } })();
+const avSalvarPref = () => { try { localStorage.setItem(AV_PREF_KEY, JSON.stringify(avPref)); } catch (e) {} };
+const AV_REPETIR_S = 60, AV_REPETIR_MAX = 5;
+const avTocados = {}; // check-in -> { vezes, ultimo }
+let AC = null;
+function avSom() {
+  if (!avPref.som) return 'desligado';
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+    const t = AC.currentTime + .02, v = Math.max(.05, Math.min(1, avPref.volume)) * .5;
+    // duas notas curtas, subindo: aviso de chegada sem ser alarme
+    [[784, 0], [1175, .2], [784, .62], [1175, .82]].forEach(([f, d]) => {
+      const o = AC.createOscillator(), g = AC.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(.0001, t + d); g.gain.exponentialRampToValueAtTime(v, t + d + .02); g.gain.exponentialRampToValueAtTime(.0001, t + d + .32);
+      o.connect(g); g.connect(AC.destination); o.start(t + d); o.stop(t + d + .36);
+    });
+    return AC.state === 'running' ? 'tocou' : 'bloqueado';
+  } catch (e) { return 'indisponivel'; }
+}
+// o navegador só libera som depois de um clique na página
+document.addEventListener('pointerdown', () => { if (AC && AC.state === 'suspended') AC.resume().then(() => avRender()); }, true);
+
+const avPendentes = () => cur() === 'checkin' ? [] : sortBy(D.checkins.filter(k => k.status === 'Na fila' && k.atendente === USUARIO && !k.cancelado && !(k.aviso && k.aviso.para === USUARIO && k.aviso.cienteEm)), k => k.filaEm || k.chegada);
+const avFila = () => cur() === 'checkin' ? [] : D.checkins.filter(k => k.status === 'Na fila' && k.atendente === USUARIO && !k.cancelado);
+function avNotificarNavegador(k) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
+    const n = new Notification('Visitante aguardando você', { body: `${k.nome} · senha ${senhaTxt(k)} · ${k.motivo}`, tag: 'ck-' + k.id, requireInteraction: true });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (e) {}
+}
+function avVerificar() {
+  const P = avPendentes(); let mudou = false;
+  for (const k of P) {
+    if (!k.aviso || k.aviso.para !== USUARIO) { k.aviso = { para: USUARIO, enviadoEm: agoraS(), exibidoEm: null, cienteEm: null }; mudou = true; }
+    if (!k.aviso.exibidoEm) { k.aviso.exibidoEm = agoraS(); mudou = true; }
+    const t = avTocados[k.id] || (avTocados[k.id] = { vezes: 0, ultimo: 0 });
+    const agoraMs = Date.now();
+    if (t.vezes === 0 || (avPref.repetir && t.vezes < AV_REPETIR_MAX && agoraMs - t.ultimo >= AV_REPETIR_S * 1000)) {
+      t.estado = avSom(); t.vezes++; t.ultimo = agoraMs;
+      if (t.vezes === 1) avNotificarNavegador(k);
+    }
+  }
+  if (mudou) save();
+  avRender();
+}
+function avRender() {
+  let box = $('#avisos');
+  if (!box) { document.body.insertAdjacentHTML('beforeend', '<div id="avisos" class="avisos" role="region" aria-label="Avisos de atendimento"></div>'); box = $('#avisos'); }
+  const P = avPendentes(), mostra = P.slice(0, 3), bloqueado = P.some(k => (avTocados[k.id] || {}).estado === 'bloqueado') && AC && AC.state !== 'running';
+  box.innerHTML = mostra.map(k => `<article class="aviso" role="alert" aria-live="assertive">
+    <p class="eyebrow">Visitante aguardando você</p>
+    <b class="aviso-nome">${esc(k.nome)}</b>
+    <span class="aviso-det">Senha <span class="mono">${senhaTxt(k)}</span> · ${esc(k.motivo)}${k.bairro ? ' · ' + esc(k.bairro) : ''}</span>
+    <span class="aviso-det num">Na fila desde ${fT(k.filaEm || k.chegada)} · esperando há ${fMin(minEntre(k.chegada, agora()))}</span>
+    <div class="ck-act"><button type="button" class="btn sm primary" data-act="av-iniciar" data-id="${k.id}">Iniciar atendimento</button><button type="button" class="btn sm" data-act="av-ciente" data-id="${k.id}">Ciente</button><a href="#recepcao" class="linkbtn">Ver fila</a></div>
+  </article>`).join('') + (P.length > 3 ? `<a class="aviso-mais" href="#recepcao">+ ${P.length - 3} ${P.length - 3 === 1 ? 'pessoa aguardando' : 'pessoas aguardando'}</a>` : '') + (bloqueado ? '<button type="button" class="aviso-som" data-act="av-som">O navegador bloqueou o som. Clique aqui para ativar.</button>' : '');
+  const sino = $('#sino'); if (sino) { const n = avFila().length; sino.dataset.n = n; sino.classList.toggle('tem', P.length > 0); sino.querySelector('.n').textContent = n || ''; sino.setAttribute('aria-label', n ? `${n} ${n === 1 ? 'visitante' : 'visitantes'} na sua fila` : 'Sua fila está vazia'); }
+}
+// título da aba pisca enquanto houver aviso sem confirmação
+let avTitulo = null;
+setInterval(() => {
+  const n = avPendentes().length;
+  if (!n) { if (avTitulo) { document.title = avTitulo; avTitulo = null; } return; }
+  if (!document.title.startsWith('(')) { avTitulo = document.title; document.title = `(${n}) Visitante aguardando`; } else if (avTitulo) { document.title = avTitulo; }
+}, 1500);
+setInterval(avVerificar, 10000);
+// dados vindos de outra aba: nova fotografia antes de qualquer mudança desta aba, para o registro não perder eventos
+window.addEventListener('storage', e => { if (e.key === KEY) { if (SNAP_D !== D) { SNAP = foto(); SNAP_D = D; } setTimeout(avVerificar, 50); } });
+{ const _r14 = render; render = function () { _r14(); setTimeout(avVerificar, 0); }; }
+
+/* situação do aviso no cartão da fila, para a recepção acompanhar */
+function avisoSituacao(k) {
+  const a = k.aviso; if (!a || a.para !== k.atendente) return '<span class="av-st">Aviso ainda não enviado</span>';
+  if (a.cienteEm) return `<span class="av-st ok">${esc(first(mName(a.para)))} viu o aviso às ${fT(a.cienteEm)}</span>`;
+  if (a.exibidoEm) return `<span class="av-st info">Aviso na tela de ${esc(first(mName(a.para)))} desde ${fT(a.exibidoEm)}</span>`;
+  return `<span class="av-st warn">Aviso enviado às ${fT(a.enviadoEm)}; ${esc(first(mName(a.para)))} ainda não abriu o sistema</span>`;
+}
+
+/* topo: quem está usando, sino da fila e preferências de aviso */
+{
+  const eu = D.equipe.find(m => m.id === USUARIO) || D.equipe[1];
+  const user = $('.top .user');
+  user.outerHTML = `<button type="button" class="sino" id="sino" data-act="av-sino" aria-label="Sua fila">${'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>'}<span class="n"></span></button><button type="button" class="user" data-act="av-quem" title="Trocar quem está usando (demonstração)"><i>${esc(initials(eu.nome))}</i><span>${esc(eu.nome)} · ${esc(eu.cargo)}</span></button>`;
+}
+function openQuem() {
+  const ok = 'Notification' in window ? Notification.permission : 'indisponivel';
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Demonstração</p><h2>Quem está usando</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <p class="note" style="max-width:60ch">Na versão final, cada pessoa entra com a própria senha. Aqui, escolha quem você é nesta aba. Para ver o aviso chegando, abra outra aba como recepção e ponha um visitante na fila desta pessoa.</p>
+    <div class="av-quem">${D.equipe.map(m => `<button type="button" class="${m.id === USUARIO ? 'on' : ''}" data-act="av-ser" data-id="${m.id}"><i>${esc(initials(m.nome))}</i><span><b>${esc(m.nome)}</b><span class="note">${esc(m.cargo)}${m.id === USUARIO ? ' · você, nesta aba' : ''}</span></span></button>`).join('')}</div>
+    <div class="sect"><h3>Avisos de atendimento</h3>
+      <div class="av-pref">
+        <label class="switch"><input type="checkbox" id="av-som" ${avPref.som ? 'checked' : ''}>Tocar som quando alguém for posto na minha fila</label>
+        <div class="fld"><label for="av-vol">Volume</label><input type="range" id="av-vol" min="0.1" max="1" step="0.1" value="${avPref.volume}"></div>
+        <label class="switch"><input type="checkbox" id="av-rep" ${avPref.repetir ? 'checked' : ''}>Repetir a cada minuto até eu confirmar (até ${AV_REPETIR_MAX} vezes)</label>
+        <div class="ck-act"><button type="button" class="btn sm" data-act="av-testar">Testar som</button>${ok === 'granted' ? '<span class="chip s-ok">Notificação do navegador ligada</span>' : ok === 'denied' ? '<span class="note">O navegador bloqueou as notificações desta página.</span>' : ok === 'indisponivel' ? '' : '<button type="button" class="btn sm" data-act="av-notif">Avisar também fora desta aba</button>'}</div>
+      </div>
+    </div>
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Fechar</button></div></div>`);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act^="av-"]'); if (!a) return;
+  const id = +a.dataset.id || 0, k = D.checkins.find(x => x.id === id);
+  switch (a.dataset.act) {
+    case 'av-ciente': case 'av-iniciar': {
+      if (!k) return;
+      k.aviso = { ...(k.aviso || { para: USUARIO, enviadoEm: agoraS(), exibidoEm: agoraS() }), cienteEm: agoraS(), como: a.dataset.act === 'av-iniciar' ? 'Iniciou o atendimento' : 'Ciente' };
+      if (a.dataset.act === 'av-iniciar' && k.status === 'Na fila') { k.status = 'Em atendimento'; k.inicio = agora(); toast(`Atendimento de ${first(k.nome)} iniciado`); }
+      save(); render(); break;
+    }
+    case 'av-sino': if (cur() !== 'recepcao') location.hash = 'recepcao'; else avVerificar(); break;
+    case 'av-quem': openQuem(); break;
+    case 'av-ser': if (id !== USUARIO) { try { sessionStorage.setItem('gm-usuario', id); } catch (err) {} location.reload(); } break;
+    case 'av-testar': { const r = avSom(); if (r === 'bloqueado') toast('O navegador ainda não liberou o som. Clique de novo.'); else if (r === 'desligado') toast('O som está desligado nas preferências.'); break; }
+    case 'av-som': avSom(); setTimeout(avRender, 300); break;
+    case 'av-notif': try { Notification.requestPermission().then(() => openQuem()); } catch (err) { toast('Este navegador não permite notificações aqui.'); } break;
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'av-som') { avPref.som = t.checked; avSalvarPref(); }
+  else if (t.id === 'av-rep') { avPref.repetir = t.checked; avSalvarPref(); }
+  else if (t.id === 'av-vol') { avPref.volume = +t.value; avSalvarPref(); avSom(); }
+});
+
+const avCss = document.createElement('style');
+avCss.textContent = `
+.avisos{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:35;display:grid;gap:10px;width:min(340px,calc(100vw - 32px));justify-items:stretch}
+.aviso{background:var(--surface);color:var(--fg);border:1px solid var(--line-strong);border-left:4px solid var(--accent);border-radius:var(--r);box-shadow:var(--shadow);padding:12px 14px;display:grid;gap:3px;animation:avEntra .25s ease-out,avPulso 2s ease-in-out .3s 3}
+.aviso .eyebrow{color:var(--accent);margin:0}
+.aviso-nome{font-size:15px}
+.aviso-det{font-size:12.5px;color:var(--muted)}
+.aviso .ck-act{margin-top:6px}
+.aviso-mais,.aviso-som{justify-self:end;font-size:12.5px;background:var(--fg);color:var(--bg);border:0;border-radius:var(--r);padding:6px 10px;text-decoration:none;cursor:pointer}
+@keyframes avEntra{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+@keyframes avPulso{50%{box-shadow:0 0 0 4px var(--accent-soft),var(--shadow)}}
+@media (prefers-reduced-motion:reduce){.aviso{animation:none}}
+.sino{position:relative;display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--muted);cursor:pointer;flex:none}
+.sino:hover{color:var(--fg);border-color:var(--line-strong)}
+.sino .n{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--line-strong);color:var(--bg);font-size:11px;font-weight:700;line-height:18px;text-align:center;font-variant-numeric:tabular-nums}
+.sino .n:empty{display:none}
+.sino.tem{color:var(--accent);border-color:var(--accent)}
+.sino.tem .n{background:var(--crit);color:#fff}
+button.user{border:0;background:none;padding:2px 4px;border-radius:var(--r);cursor:pointer;font:inherit;color:inherit;text-align:left}
+button.user:hover{background:var(--surface-2)}
+.av-quem{display:grid;gap:6px}
+.av-quem button{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:var(--r);padding:8px 10px;cursor:pointer}
+.av-quem button:hover{border-color:var(--line-strong)}
+.av-quem button.on{border-color:var(--accent);background:var(--accent-soft)}
+.av-quem i{width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-style:normal;font-weight:600;font-size:12px;flex:none}
+.av-quem span{display:grid}
+.av-pref{display:grid;gap:12px}
+.av-pref input[type=range]{width:100%;accent-color:var(--accent);min-height:0;padding:0;border:0}
+.av-st{font-size:12px;color:var(--muted)}
+.av-st.ok{color:var(--ok)} .av-st.info{color:var(--info)} .av-st.warn{color:var(--warn)}
+body.kiosk .avisos{display:none}
+@media (max-width:640px){.avisos{left:16px;right:16px;width:auto}}
+`;
+document.head.appendChild(avCss);
 render();
 </script>
 <script>
