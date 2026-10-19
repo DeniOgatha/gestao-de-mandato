@@ -7237,9 +7237,10 @@ const MX = (function () {
           if (!votos[i]) return;
           var m = MUN[l[4]];
           if (cur.escopoUf && m.uf !== cur.escopoUf) return;
+          if (S.cidade != null && l[4] !== S.cidade) return;
           if (!porteMun(l[4])) return;
           if (votos[i] < S.min) return;
-          pts.push({ lat: l[0] / ESC, lng: l[1] / ESC, nome: l[2], bairro: l[3], mun: m, zona: l[5], aptos: l[6], comp: l[7], votos: votos[i], validos: val[i], arq: a, li: i, ano: ano, k: k });
+          pts.push({ lat: l[0] / ESC, lng: l[1] / ESC, nome: l[2], bairro: l[3], mun: m, zona: l[5], aptos: l[6], comp: l[7], aprox: l[8] === 1, votos: votos[i], validos: val[i], arq: a, li: i, ano: ano, k: k });
         });
       });
       escolasPts = pts;
@@ -7344,6 +7345,7 @@ const MX = (function () {
       '<div class="t-sub" style="margin:4px 0 0">' + (p.validos ? nf2.format(100 * p.votos / p.validos) + "% dos válidos" : "—") + " · " + nf.format(p.aptos) + " eleitores · " +
       (p.aptos ? nf1.format(100 * p.comp / p.aptos) + "% compareceram" : "") + "</div>" +
       topEscola(p) +
+      (p.aprox ? '<div class="t-hint">Posição aproximada: a coordenada do TSE caía fora de ' + esc(p.mun.nome) + ", então o local foi posto dentro do município.</div>" : "") +
       '<div class="t-hint">Local de votação (soma de todas as urnas do prédio)</div>';
   }
 
