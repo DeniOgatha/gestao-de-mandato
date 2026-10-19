@@ -3304,7 +3304,9 @@ const sCase = s => { const t = String(s || '').toLowerCase(); return t.charAt(0)
 const brlC = n => { const a = Math.abs(n); if (a >= 1e9) return `R$ ${(n / 1e9).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} bi`; if (a >= 1e6) return `R$ ${(n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`; if (a >= 1e3) return `R$ ${Math.round(n / 1e3).toLocaleString('pt-BR')} mil`; return brl(n); };
 const mesAno = s => `${MES3[+String(s).slice(4, 6) - 1]}/${String(s).slice(0, 4)}`;
 const munUf = s => { const m = String(s).match(/^(.*) - ([A-Z]{2})$/); return m ? `${tc(m[1])} - ${m[2]}` : tc(s); };
-const FONTE_EMD = () => `<p class="note">Fonte: ${EMD ? esc(EMD.fonte) : 'Portal da Transparência (CGU)'}. Pago inclui restos a pagar quitados nos anos seguintes. Pessoas físicas e microempreendedores individuais aparecem somados, sem nome.</p>`;
+const FONTE_EMD = () => `<p class="note">Fonte: ${EMD ? esc(EMD.fonte) : 'Portal da Transparência (CGU)'}. Pago inclui restos a pagar quitados nos anos seguintes. Cada código de emenda abre a ficha oficial no Portal, com empenhos, pagamentos e favorecidos. Pessoas físicas e microempreendedores individuais aparecem somados, sem nome.</p>`;
+const urlEmd = c => `https://portaldatransparencia.gov.br/emendas/detalhe?codigoEmenda=${encodeURIComponent(c)}&ordenarPor=data&direcao=desc`;
+const linkEmd = c => `<a class="mono" href="${urlEmd(c)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir a ficha da emenda no Portal da Transparência">${esc(c)}</a>`;
 const carregando = t => `<div class="wrap">${head(t, 'Carregando os dados do Portal da Transparência…')}</div>`;
 
 function emdSit(x) {
@@ -3367,7 +3369,7 @@ function vEmendasReal() {
   ${listView('emendas-r', { type: 'emr', placeholder: 'Buscar por ação, local ou código', rows: sortBy(L, x => x.cod, -1),
     search: x => [x.acao, x.loc, x.cod, x.funcao], filters: [{ key: 'ano', label: 'Ano', options: ANOS.map(String), test: (x, v) => x.ano === +v }, { key: 'fn', label: 'Área', options: FUNCS, test: (x, v) => x.funcao === v }, { key: 'sit', label: 'Execução', options: ['Paga', 'Paga em parte', 'Empenhada', 'Não empenhada', 'Cancelada'], test: (x, v) => x.sit === v }],
     cols: [
-      { l: 'Emenda', v: x => `<span class="mono">${x.cod}</span><div class="s">${x.ano}</div>` },
+      { l: 'Emenda', v: x => `${linkEmd(x.cod)}<div class="s">${x.ano}</div>` },
       { l: 'Ação', v: x => `<div class="t">${esc(sCase(x.acao))}</div><div class="s">${esc(munUf(x.loc))}</div>` },
       { l: 'Área', v: x => esc(x.funcao) }, { l: 'Empenhado', cls: 'r', v: x => `<span class="mono">${brl(x.emp)}</span>` },
       { l: 'Pago', cls: 'r', v: x => `<span class="mono">${brl(x.pago)}</span>` }, { l: 'Execução', v: x => chip(x.sit) }
@@ -3385,7 +3387,7 @@ function openEmenda(cod) {
       <div class="sect"><h3>Valores</h3><dl class="kv"><dt>Empenhado</dt><dd class="mono">${brl(x.emp)}</dd><dt>Liquidado</dt><dd class="mono">${brl(x.liq)}</dd><dt>Pago</dt><dd class="mono">${brl(x.pago)}</dd><dt>Cancelado</dt><dd class="mono">${brl(x.rpc)}</dd><dt>Saldo a pagar</dt><dd class="mono">${brl(x.saldo)}</dd></dl></div>
       ${FONTE_EMD()}
     </div>
-    <div class="df"><span class="sp"></span><a class="btn" href="https://portaldatransparencia.gov.br/emendas" target="_blank" rel="noopener">Abrir o Portal da Transparência</a><button type="button" class="btn primary" data-act="drawer-close">Fechar</button></div>
+    <div class="df"><span class="sp"></span><a class="btn" href="${urlEmd(x.cod)}" target="_blank" rel="noopener">Ver ficha no Portal da Transparência</a><button type="button" class="btn primary" data-act="drawer-close">Fechar</button></div>
   </div>`);
 }
 const openItem0 = openItem;
@@ -3404,7 +3406,7 @@ function vOrcFederalReal() {
   let corpo;
   if (st.tab === 'mun') corpo = tabela([['Município'], ['Recebido', 'r'], ['Parte do estado', 'r']], U.mun.map(([m, v]) => `<tr><td>${esc(tc(m))}</td><td class="r mono">${brl(v)}</td><td class="r num">${(v / tot * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</td></tr>`));
   else if (st.tab === 'fav') corpo = tabela([['Favorecido'], ['Natureza'], ['Município'], ['Recebido', 'r']], U.fav.map(([n, ni, m, v]) => `<tr><td class="t">${esc(tc(n))}</td><td class="s">${esc(EMD.dic.nat[ni])}</td><td>${esc(tc(m))}</td><td class="r mono">${brl(v)}</td></tr>`).concat(U.pf[0] ? [`<tr><td class="t">Pessoas físicas e MEIs</td><td class="s">${fN(U.pf[0])} pagamentos, sem nome</td><td>—</td><td class="r mono">${brl(U.pf[1])}</td></tr>`] : []));
-  else if (st.tab === 'pag') corpo = tabela([['Mês'], ['Emenda'], ['Autoria'], ['Favorecido'], ['Valor', 'r']], U.pag.map(([am, cod, a, f, m, v]) => `<tr><td class="num">${mesAno(am)}</td><td class="mono">${cod}</td><td>${esc(tc(a))}</td><td><div>${esc(tc(f))}</div><div class="s">${esc(tc(m))}</div></td><td class="r mono">${brl(v)}</td></tr>`));
+  else if (st.tab === 'pag') corpo = tabela([['Mês'], ['Emenda'], ['Autoria'], ['Favorecido'], ['Valor', 'r']], U.pag.map(([am, cod, a, f, m, v]) => `<tr><td class="num">${mesAno(am)}</td><td>${linkEmd(cod)}</td><td>${esc(tc(a))}</td><td><div>${esc(tc(f))}</div><div class="s">${esc(tc(m))}</div></td><td class="r mono">${brl(v)}</td></tr>`));
   else corpo = tabela([['Autoria'], ['Tipo de emenda'], ['Recebido', 'r']], U.aut.filter(([a]) => norm(a) !== 'sem informacao').map(([a, ti, v]) => `<tr><td class="t">${esc(tc(a))}</td><td class="s">${esc(EMD.dic.tipo[ti])}</td><td class="r mono">${brl(v)}</td></tr>`));
   return `<div class="wrap emd-wrap">${head(T, `Dinheiro de emendas parlamentares pago a prefeituras, fundos e entidades de ${esc(UF_NOME[uf] || uf)}, de todas as autorias: individuais, de bancada, de comissão e de relator.`, sel)}
   <section class="money-strip emd-ms">
