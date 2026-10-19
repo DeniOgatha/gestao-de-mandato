@@ -1419,7 +1419,7 @@ function vVisitas() {
   return `<div class="wrap">${head('Visitas ao gabinete', 'Registro de quem passou pelo gabinete e o que foi feito.', newBtn('visita', 'Registrar visita'))}
   ${listView('visitas', { type: 'visita', placeholder: 'Buscar por visitante ou motivo', rows: sortBy(D.visitas, v => v.data, -1),
     search: v => [cName(v.contato), v.motivo, v.encaminhamento],
-    filters: [{ key: 'motivo', label: 'Motivo', options: V_MOTIVOS, test: (v, x) => v.motivo === x }, { key: 'at', label: 'Atendente', options: D.equipe.map(m => [m.id, m.nome]), test: (v, x) => v.atendente === +x }],
+    filters: [{ key: 'motivo', label: 'Motivo', options: typeof motivosTodos === 'function' ? motivosTodos() : V_MOTIVOS, test: (v, x) => v.motivo === x }, { key: 'at', label: 'Atendente', options: D.equipe.map(m => [m.id, m.nome]), test: (v, x) => v.atendente === +x }],
     cols: [
       { l: 'Data', v: v => `<span class="num">${fD(v.data)}</span>` },
       { l: 'Visitante', v: v => `<div class="t">${esc(cName(v.contato))}</div><div class="s">${esc((byId('contatos', v.contato) || {}).bairro || '')}</div>` },
@@ -3652,7 +3652,7 @@ function vRecepcao() {
   const abertos = s => sortBy(K.filter(k => k.status === s), k => k.chegada);
   const atend = sortBy(K.filter(k => k.status === 'Atendido' && (k.fim || '').startsWith(H)), k => k.fim, -1);
   const comIni = K.filter(k => k.inicio && k.inicio.startsWith(H)), esperaMed = comIni.length ? Math.round(comIni.reduce((s, k) => s + minEntre(k.chegada, k.inicio), 0) / comIni.length) : 0;
-  const now = agora(), quem = (m, k) => `<option value="${m.id}" ${SUGERE[k.motivo] === m.id ? 'selected' : ''}>${esc(m.nome)}</option>`;
+  const now = agora(), quem = (m, k) => `<option value="${m.id}" ${sugAt(k.motivo) === m.id ? 'selected' : ''}>${esc(m.nome)}</option>`;
   const cab = k => `<div class="m"><span class="ck-senha">Senha ${pad(k.senha).padStart(3, '0')}</span>${k.novo || !visitasDe(k.contato) ? '<span class="chip s-accent plain">Primeira visita</span>' : `<span class="note">${visitasDe(k.contato)} ${visitasDe(k.contato) === 1 ? 'visita anterior' : 'visitas anteriores'}</span>`}</div>
     <a class="t" href="#" data-act="open" data-type="contato" data-id="${k.contato}">${esc(k.nome)}</a>
     <span class="s">${esc(k.motivo)} · ${esc(k.bairro)}</span>${k.relato ? `<p class="ck-relato">${esc(k.relato)}</p>` : ''}`;
@@ -3673,7 +3673,7 @@ function vRecepcao() {
   const cols = { 'Chegou': abertos('Chegou'), 'Na fila': abertos('Na fila'), 'Em atendimento': abertos('Em atendimento'), 'Atendido': atend };
   const titulo = { 'Chegou': 'Check-in feito', 'Na fila': 'Na fila', 'Em atendimento': 'Em atendimento', 'Atendido': 'Atendidos hoje' };
   const vazio = { 'Chegou': 'Ninguém aguardando a recepção.', 'Na fila': 'Fila vazia.', 'Em atendimento': 'Nenhum atendimento agora.', 'Atendido': 'Nenhum atendimento concluído hoje.' };
-  return `<div class="wrap ck">${head('Recepção', 'Quem fez check-in pelo QR code, a fila de cada pessoa da equipe e o registro de cada atendimento.', `<button type="button" class="btn" data-act="ck-qr">QR code da recepção</button><a class="btn primary" href="#checkin">Fazer check-in</a>`)}
+  return `<div class="wrap ck">${head('Recepção', 'Quem fez check-in pelo QR code, a fila de cada pessoa da equipe e o registro de cada atendimento.', `<button type="button" class="btn" data-act="as-abrir">Assuntos</button><button type="button" class="btn" data-act="ck-qr">QR code da recepção</button><a class="btn primary" href="#checkin">Fazer check-in</a>`)}
   <section class="kpis">
     <div class="kpi"><span class="l">Aguardando a recepção</span><span class="v">${cols['Chegou'].length}</span><span class="d">fizeram check-in</span></div>
     <div class="kpi"><span class="l">Na fila</span><span class="v">${cols['Na fila'].length}</span><span class="d">${[...new Set(cols['Na fila'].map(k => first(mName(k.atendente))))].join(', ') || 'ninguém esperando'}</span></div>
@@ -3784,7 +3784,8 @@ function vCheckin() {
         <div class="fld"><label for="ckf-comp">Complemento</label><input id="ckf-comp" placeholder="Apto, bloco"></div>
         <div class="fld ck-full"><label for="ckf-bairro">Bairro *</label><input id="ckf-bairro" list="ckf-bairros" autocomplete="off"><datalist id="ckf-bairros">${BN.map(b => `<option value="${esc(b)}">`).join('')}</datalist></div>
       </div>
-      <div class="fld w2"><label for="ckf-motivo">Assunto *</label><select id="ckf-motivo"><option value="">Selecione</option>${V_MOTIVOS.map(m => `<option ${v.motivo === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></div>
+      <div class="fld w2"><label for="ckf-motivo">Assunto *</label><select id="ckf-motivo"><option value="">Selecione</option>${D.motivos.map(m => `<option>${esc(m.nome)}</option>`).join('')}${D.ckOutros !== false ? '<option value="__outro">Outros</option>' : ''}</select></div>
+      <div class="fld w2" id="ckf-outro-f" hidden><label for="ckf-outro">Qual é o assunto? *</label><input id="ckf-outro" maxlength="60" placeholder="Ex.: pedido de poda de árvore"></div>
       <div class="fld w2"><label for="ckf-relato">Conte em poucas palavras (opcional)</label><textarea id="ckf-relato" rows="3" placeholder="Ex.: falta de vaga na creche para meu filho">${esc(v.relato || '')}</textarea></div>
       <label class="ck-consent w2" for="ckf-lgpd"><input type="checkbox" id="ckf-lgpd" ${v.lgpd ? 'checked' : ''}><span>Autorizo o gabinete a registrar esta visita e a falar comigo pelo WhatsApp sobre o meu atendimento. *</span></label>
     </div>
@@ -3836,11 +3837,11 @@ document.addEventListener('submit', e => {
   const f = e.target;
   if (f.id === 'ck-form') {
     e.preventDefault();
-    const nome = $('#ckf-nome').value.trim().replace(/\s+/g, ' '), tel = soDig($('#ckf-tel').value), cepD = $('#ckf-cep').value.replace(/\D/g, ''), motivo = $('#ckf-motivo').value, relato = $('#ckf-relato').value.trim(), lgpd = $('#ckf-lgpd').checked;
+    const nome = $('#ckf-nome').value.trim().replace(/\s+/g, ' '), tel = soDig($('#ckf-tel').value), cepD = $('#ckf-cep').value.replace(/\D/g, ''), motivoSel = $('#ckf-motivo').value, motivo = motivoSel === '__outro' ? $('#ckf-outro').value.trim().replace(/\s+/g, ' ') : motivoSel, relato = $('#ckf-relato').value.trim(), lgpd = $('#ckf-lgpd').checked;
     const val = i => $('#' + i).value.trim().replace(/\s+/g, ' ');
     const end = { cep: cepD.length === 8 ? cepFmt(cepD) : '', rua: val('ckf-rua'), numero: val('ckf-num'), complemento: val('ckf-comp'), bairro: val('ckf-bairro'), cidade: val('ckf-cidade'), uf: $('#ckf-uf').value }, bairro = end.bairro;
     ui('ck').v = { nome, tel: $('#ckf-tel').value, motivo, relato, lgpd };
-    const err = !nome || nome.split(' ').length < 2 ? 'Escreva seu nome e sobrenome.' : tel.length < 10 || tel.length > 11 ? 'Confira o celular: DDD e número, por exemplo (15) 99999-9999.' : cepD.length !== 8 && !CK_CEP.manual ? 'Digite o CEP com 8 números ou toque em “Não sei o CEP”.' : $('#ckf-end').hidden ? 'Aguarde a busca do CEP ou digite o endereço.' : !bairro || !end.cidade ? 'Complete o endereço: bairro e cidade.' : !motivo ? 'Escolha o assunto da visita.' : !lgpd ? 'Para fazer o check-in, marque a autorização no fim do formulário.' : '';
+    const err = !nome || nome.split(' ').length < 2 ? 'Escreva seu nome e sobrenome.' : tel.length < 10 || tel.length > 11 ? 'Confira o celular: DDD e número, por exemplo (15) 99999-9999.' : cepD.length !== 8 && !CK_CEP.manual ? 'Digite o CEP com 8 números ou toque em “Não sei o CEP”.' : $('#ckf-end').hidden ? 'Aguarde a busca do CEP ou digite o endereço.' : !bairro || !end.cidade ? 'Complete o endereço: bairro e cidade.' : !motivoSel ? 'Escolha o assunto da visita.' : !motivo ? 'Escreva qual é o assunto da visita.' : !lgpd ? 'Para fazer o check-in, marque a autorização no fim do formulário.' : '';
     if (err) { const p = $('#ckf-err'); p.textContent = err; p.hidden = false; return; }
     let c = D.contatos.find(x => soDig(x.telefone) === tel), novo = false;
     if (!c) {
@@ -3941,6 +3942,71 @@ document.addEventListener('click', e => {
     $('#ckf-sug').hidden = true; cepSt('Endereço escolhido. Informe o número.', 'ok'); $('#ckf-num').focus();
   }
 });
+/* ---------- assuntos do check-in: lista editável pela equipe ---------- */
+const motivosPadrao = () => V_MOTIVOS.map((n, i) => ({ id: i + 1, nome: n, atendente: SUGERE[n] || null }));
+{
+  const _seedExtra2 = seedExtra;
+  seedExtra = function () { const x = _seedExtra2(); x.motivos = motivosPadrao(); x.ckOutros = true; return x; };
+  window.seedExtra = seedExtra;
+  if (!D.motivos) { D.motivos = motivosPadrao(); D.ckOutros = true; save(); }
+}
+const sugAt = nome => (D.motivos.find(m => m.nome === nome) || {}).atendente || null;
+// assuntos cadastrados e os que já aparecem em registros (inclui os digitados em "Outros")
+const motivosTodos = () => [...new Set([...D.motivos.map(m => m.nome), ...D.visitas.map(v => v.motivo), ...D.checkins.map(k => k.motivo)].filter(Boolean))];
+Object.assign(SCHEMA.visita.fields.find(f => f.k === 'motivo'), { o: motivosTodos });
+SCHEMA.visita.def = () => ({ data: T0, atendente: 2, motivo: (D.motivos[0] || {}).nome || '' });
+Object.defineProperty(REL.visitas.f, 1, { get: motivosTodos });
+
+let ASD = null; // rascunho da lista enquanto a gaveta está aberta
+function asSync() { if (!ASD) return; ASD.lista.forEach((m, i) => { const n = $(`#as-n-${i}`), a = $(`#as-a-${i}`); if (n) m.nome = n.value; if (a) m.atendente = a.value ? +a.value : null; }); const o = $('#as-outros'); if (o) ASD.outros = o.checked; }
+function openAssuntos(erro) {
+  if (!ASD) ASD = { lista: D.motivos.map(m => ({ ...m })), outros: D.ckOutros !== false };
+  const L = ASD.lista, quem = sel => `<option value="">Sem sugestão</option>${D.equipe.map(m => `<option value="${m.id}" ${m.id === sel ? 'selected' : ''}>${esc(m.nome)}</option>`).join('')}`;
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Recepção</p><h2>Assuntos do check-in</h2></div><button type="button" class="icon-btn" data-act="as-fechar" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <p class="note" style="max-width:60ch">É a lista que o visitante vê no formulário. A pessoa sugerida já vem marcada quando a recepção põe o visitante na fila. Mudar o nome de um assunto não altera visitas já registradas.</p>
+    <ol class="as-list">${L.map((m, i) => `<li>
+      <span class="as-ord num">${i + 1}</span>
+      <div class="as-campos"><input id="as-n-${i}" value="${esc(m.nome)}" maxlength="60" aria-label="Nome do assunto ${i + 1}"><select id="as-a-${i}" aria-label="Quem atende ${esc(m.nome)}">${quem(m.atendente)}</select></div>
+      <div class="as-bts"><button type="button" class="icon-btn" data-act="as-mover" data-i="${i}" data-d="-1" aria-label="Subir ${esc(m.nome)}" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="icon-btn" data-act="as-mover" data-i="${i}" data-d="1" aria-label="Descer ${esc(m.nome)}" ${i === L.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="icon-btn as-del" data-act="as-del" data-i="${i}" aria-label="Remover ${esc(m.nome)}">×</button></div>
+    </li>`).join('')}</ol>
+    <div class="inline-add"><input id="as-novo" maxlength="60" placeholder="Novo assunto, ex.: Pedido de poda" aria-label="Novo assunto"><button type="button" class="btn" data-act="as-add">Adicionar</button></div>
+    <label class="switch"><input type="checkbox" id="as-outros" ${ASD.outros ? 'checked' : ''}>Mostrar “Outros” para o visitante digitar o assunto</label>
+    <p class="ferr" id="as-err" ${erro ? '' : 'hidden'}>${esc(erro || '')}</p>
+  </div>
+  <div class="df"><button type="button" class="btn ghost" data-act="as-padrao">Voltar à lista padrão</button><span class="sp"></span><button type="button" class="btn" data-act="as-fechar">Cancelar</button><button type="button" class="btn primary" data-act="as-salvar">Salvar assuntos</button></div></div>`);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act^="as-"]'); if (!a) return;
+  const i = +a.dataset.i;
+  switch (a.dataset.act) {
+    case 'as-abrir': ASD = null; openAssuntos(); break;
+    case 'as-fechar': ASD = null; closeDrawer(); break;
+    case 'as-mover': { asSync(); const j = i + +a.dataset.d, L = ASD.lista; if (j < 0 || j >= L.length) return; [L[i], L[j]] = [L[j], L[i]]; openAssuntos(); $(`[data-act="as-mover"][data-i="${j}"][data-d="${a.dataset.d}"]`)?.focus(); break; }
+    case 'as-del': asSync(); ASD.lista.splice(i, 1); openAssuntos(); break;
+    case 'as-add': {
+      asSync(); const v = $('#as-novo').value.trim().replace(/\s+/g, ' ');
+      if (!v) { $('#as-novo').focus(); return; }
+      if (ASD.lista.some(m => norm(m.nome) === norm(v))) return openAssuntos(`“${v}” já está na lista.`);
+      ASD.lista.push({ id: ASD.lista.reduce((m, x) => Math.max(m, x.id), 0) + 1, nome: v, atendente: null }); openAssuntos(); $('#as-novo').focus(); break;
+    }
+    case 'as-padrao': asSync(); ASD.lista = motivosPadrao(); openAssuntos(); break;
+    case 'as-salvar': {
+      asSync();
+      const L = ASD.lista.map(m => ({ ...m, nome: m.nome.trim().replace(/\s+/g, ' ') }));
+      const vazio = L.findIndex(m => !m.nome), dup = L.find((m, k) => L.findIndex(x => norm(x.nome) === norm(m.nome)) !== k);
+      const err = !L.length && !ASD.outros ? 'Deixe ao menos um assunto ou ligue a opção “Outros”.' : vazio >= 0 ? `Dê um nome ao assunto ${vazio + 1} ou remova-o.` : dup ? `“${dup.nome}” aparece duas vezes.` : '';
+      if (err) return openAssuntos(err);
+      D.motivos = L; D.ckOutros = ASD.outros; ASD = null; save(); closeDrawer(); toast('Assuntos salvos'); render(); break;
+    }
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'as-novo') { e.preventDefault(); $('[data-act="as-add"]').click(); } });
+document.addEventListener('input', e => { if (e.target.closest('#ck-form')) { const p = $('#ckf-err'); if (p) p.hidden = true; } });
+document.addEventListener('change', e => {
+  if (e.target.id !== 'ckf-motivo') return;
+  const outro = e.target.value === '__outro'; $('#ckf-outro-f').hidden = !outro; if (outro) $('#ckf-outro').focus();
+});
 window.addEventListener('hashchange', () => { if (['checkin', 'automacoes'].includes(cur()) && !$('#drawer').hidden) closeDrawer(); });
 // fila e formulário abertos em abas diferentes do mesmo navegador
 window.addEventListener('storage', e => { if (e.key === KEY && e.newValue) { try { D = JSON.parse(e.newValue); if ($('#drawer').hidden && cur() !== 'checkin') render(); else renderNav(); } catch (err) {} } });
@@ -3972,6 +4038,17 @@ ckCss.textContent = `
 .ck-sug button:hover,.ck-sug button:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
 .ck-sug button small{font-weight:400;color:var(--muted)}
 .ck-sug button>span{font-size:12.5px;color:var(--muted)}
+.as-list{list-style:none;margin:0;padding:0;display:grid}
+.as-list li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.as-list li:first-child{border-top:0}
+.as-ord{color:var(--faint);font-size:12px;text-align:right}
+.as-campos{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:6px}
+.as-campos input,.as-campos select{height:34px;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);padding:0 8px;min-width:0}
+.as-bts{display:flex;gap:2px}
+.as-bts .icon-btn{font-size:16px}
+.as-bts .icon-btn:disabled{opacity:.3;cursor:default}
+.as-bts .as-del:hover{color:var(--crit)}
+@media (max-width:520px){.as-campos{grid-template-columns:minmax(0,1fr)}}
 .ck .kanban{grid-auto-columns:minmax(250px,1fr)}
 .ck-aviso{background:var(--ok-soft);color:var(--ok);padding:10px 12px;border-radius:var(--r);font-weight:500}
 .ck-msg{background:var(--surface-2);padding:10px 12px;border-radius:var(--r);white-space:pre-wrap;max-width:60ch}
