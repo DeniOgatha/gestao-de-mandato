@@ -3840,7 +3840,7 @@ document.addEventListener('click', e => {
   switch (a.dataset.act) {
     case 'ck-qr': openQR(); break;
     case 'ck-cartaz': pdfCartaz(); break;
-    case 'ck-fila': k.atendente = +$(`#ck-at-${id}`).value; k.status = 'Na fila'; k.filaEm = agora(); k.aviso = { para: k.atendente, enviadoEm: agoraS(), exibidoEm: null, cienteEm: null }; save(); toast(`${first(k.nome)} na fila de ${first(mName(k.atendente))}`); render(); break;
+    case 'ck-fila': k.atendente = +$(`#ck-at-${id}`).value; k.status = 'Na fila'; k.filaEm = agora(); if (k.aviso && k.aviso.para !== k.atendente) k.avisosAnt = [...(k.avisosAnt || []), k.aviso]; k.aviso = { para: k.atendente, enviadoEm: agoraS(), exibidoEm: null, cienteEm: null }; save(); toast(`${first(k.nome)} na fila de ${first(mName(k.atendente))}`); render(); break;
     case 'ck-iniciar': k.status = 'Em atendimento'; k.inicio = agora(); save(); toast(`Atendimento de ${first(k.nome)} iniciado`); render(); break;
     case 'ck-saiu': openSaida(id); break;
     case 'ck-concluir': openConcluir(id); break;
@@ -5008,7 +5008,7 @@ function avNotificarNavegador(k) {
 function avVerificar() {
   const P = avPendentes(); let mudou = false;
   for (const k of P) {
-    if (!k.aviso || k.aviso.para !== USUARIO) { k.aviso = { para: USUARIO, enviadoEm: agoraS(), exibidoEm: null, cienteEm: null }; mudou = true; }
+    if (!k.aviso || k.aviso.para !== USUARIO) { if (k.aviso) k.avisosAnt = [...(k.avisosAnt || []), k.aviso]; k.aviso = { para: USUARIO, enviadoEm: agoraS(), exibidoEm: null, cienteEm: null }; mudou = true; }
     if (!k.aviso.exibidoEm) { k.aviso.exibidoEm = agoraS(); mudou = true; }
     const t = avTocados[k.id] || (avTocados[k.id] = { vezes: 0, ultimo: 0 });
     const agoraMs = Date.now();
@@ -5031,7 +5031,8 @@ function avRender() {
     <span class="aviso-det num">Na fila desde ${fT(k.filaEm || k.chegada)} · esperando há ${fMin(minEntre(k.chegada, agora()))}</span>
     <div class="ck-act"><button type="button" class="btn sm primary" data-act="av-iniciar" data-id="${k.id}">Iniciar atendimento</button><button type="button" class="btn sm" data-act="av-ciente" data-id="${k.id}">Ciente</button><a href="#recepcao" class="linkbtn">Ver fila</a></div>
   </article>`).join('') + (P.length > 3 ? `<a class="aviso-mais" href="#recepcao">+ ${P.length - 3} ${P.length - 3 === 1 ? 'pessoa aguardando' : 'pessoas aguardando'}</a>` : '') + (bloqueado ? '<button type="button" class="aviso-som" data-act="av-som">O navegador bloqueou o som. Clique aqui para ativar.</button>' : '');
-  const sino = $('#sino'); if (sino) { const n = avFila().length; sino.dataset.n = n; sino.classList.toggle('tem', P.length > 0); sino.querySelector('.n').textContent = n || ''; sino.setAttribute('aria-label', n ? `${n} ${n === 1 ? 'visitante' : 'visitantes'} na sua fila` : 'Sua fila está vazia'); }
+  const sino = $('#sino'); if (sino) { const n = typeof avNaoLidos === 'function' ? avNaoLidos().length : P.length; sino.dataset.n = n; sino.classList.toggle('tem', n > 0); sino.querySelector('.n').textContent = n > 99 ? '99+' : (n || ''); sino.setAttribute('aria-label', n ? `Avisos: ${n} não ${n === 1 ? 'lido' : 'lidos'}` : 'Avisos: nenhum não lido'); sino.setAttribute('aria-expanded', !!$('#avpainel:not([hidden])')); }
+  if (typeof avPainelRender === 'function') avPainelRender();
 }
 // título da aba pisca enquanto houver aviso sem confirmação
 let avTitulo = null;
@@ -5086,7 +5087,7 @@ document.addEventListener('click', e => {
       if (a.dataset.act === 'av-iniciar' && k.status === 'Na fila') { k.status = 'Em atendimento'; k.inicio = agora(); toast(`Atendimento de ${first(k.nome)} iniciado`); }
       save(); render(); break;
     }
-    case 'av-sino': if (cur() !== 'recepcao') location.hash = 'recepcao'; else avVerificar(); break;
+    case 'av-sino': avPainelAlternar(); break;
     case 'av-quem': openQuem(); break;
     case 'av-ser': if (id !== USUARIO) { try { sessionStorage.setItem('gm-usuario', id); } catch (err) {} location.reload(); } break;
     case 'av-testar': { const r = avSom(); if (r === 'bloqueado') toast('O navegador ainda não liberou o som. Clique de novo.'); else if (r === 'desligado') toast('O som está desligado nas preferências.'); break; }
@@ -5373,6 +5374,122 @@ button.mp-hbr{cursor:pointer} button.mp-hbr:hover{background:var(--surface-2)}
 @media (max-width:560px){.wrap .kpis.mp-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.wrap .kpis.mp-kpis .kpi:nth-child(n){border-left:0;border-top:1px solid var(--line)}.wrap .kpis.mp-kpis .kpi:nth-child(-n+2){border-top:0}.wrap .kpis.mp-kpis .kpi:nth-child(even){border-left:1px solid var(--line)}}
 `;
 document.head.appendChild(mpCss);
+render();
+</script>
+<script>
+/* =====================================================================
+   v16: histórico de avisos no sino — lidos e não lidos
+   ===================================================================== */
+const avHist = () => {
+  const L = [];
+  for (const k of D.checkins) {
+    if (k.aviso && k.aviso.para === USUARIO) L.push({ k, a: k.aviso, atual: true });
+    (k.avisosAnt || []).filter(a => a.para === USUARIO).forEach(a => L.push({ k, a, atual: false }));
+  }
+  return L.sort((x, y) => (y.a.enviadoEm || '') > (x.a.enviadoEm || '') ? 1 : -1);
+};
+const avNaoLidos = () => cur() === 'checkin' ? [] : avHist().filter(h => !h.a.cienteEm);
+const avQuando = t => { if (!t) return '—'; const d = t.slice(0, 10); return d === hoje() ? `hoje, ${t.slice(11, 16)}` : d === iso(addDays(new Date(new Date().setHours(0, 0, 0, 0)), -1)) ? `ontem, ${t.slice(11, 16)}` : `${fDs(d)}, ${t.slice(11, 16)}`; };
+function avSituacao(h) {
+  const k = h.k;
+  if (!h.atual) return [`Repassado a ${first(mName(k.atendente))}`, ''];
+  if (k.cancelado) return ['Registro cancelado', 'crit'];
+  if (k.status === 'Na fila') return k.atendente === USUARIO ? ['Aguardando você', 'warn'] : [`Na fila de ${first(mName(k.atendente))}`, ''];
+  if (k.status === 'Em atendimento') return [k.atendente === USUARIO ? 'Em atendimento com você' : `Em atendimento com ${first(mName(k.atendente))}`, 'info'];
+  if (k.status === 'Atendido') return [`Atendido às ${fT(k.fim)}`, 'ok'];
+  if (k.status === 'Saiu sem atendimento') return [`Saiu sem atendimento às ${fT(k.fim)}`, ''];
+  return [k.status, ''];
+}
+let avFiltro = 'nao';
+function avPainelRender() {
+  const box = $('#avpainel'); if (!box || box.hidden) return;
+  const H = avHist(), nao = H.filter(h => !h.a.cienteEm), L = avFiltro === 'nao' ? nao : H;
+  const item = h => {
+    const k = h.k, lido = !!h.a.cienteEm, [sit, cls] = avSituacao(h);
+    return `<li class="${lido ? 'lido' : 'novo'}">
+      <button type="button" class="avp-item" data-act="avp-abrir" data-id="${k.id}" data-atual="${h.atual ? 1 : 0}">
+        <span class="avp-pt" aria-hidden="true"></span>
+        <span class="avp-txt"><b>${esc(k.nome)}</b><span>Senha <span class="mono">${senhaTxt(k)}</span> · ${esc(k.motivo)}</span>
+          <span class="avp-meta">Aviso de ${avQuando(h.a.enviadoEm)}<span class="chip ${cls ? 's-' + cls : ''}">${esc(sit)}</span></span></span>
+        <span class="sr">${lido ? 'lido' : 'não lido'}</span>
+      </button>
+      <div class="avp-lido">${lido ? `<span class="note">Lido ${avQuando(h.a.cienteEm)}${h.a.como && h.a.como !== 'Ciente' ? ` · ${esc(h.a.como.toLowerCase())}` : ''}</span>` : `<button type="button" class="linkbtn" data-act="avp-lido" data-id="${k.id}" data-atual="${h.atual ? 1 : 0}">Marcar como lido</button>`}</div>
+    </li>`;
+  };
+  box.innerHTML = `<div class="avp-h"><b>Avisos</b><div class="seg" role="group" aria-label="Filtrar avisos"><button type="button" class="${avFiltro === 'nao' ? 'on' : ''}" data-act="avp-f" data-k="nao">Não lidos <span class="num">${nao.length}</span></button><button type="button" class="${avFiltro === 'todos' ? 'on' : ''}" data-act="avp-f" data-k="todos">Todos <span class="num">${H.length}</span></button></div></div>
+    <ul class="avp-lista">${L.slice(0, 60).map(item).join('') || `<li class="avp-vazio">${avFiltro === 'nao' ? 'Nenhum aviso não lido.' : 'Nenhum aviso ainda. Eles aparecem aqui quando a recepção põe alguém na sua fila.'}</li>`}</ul>
+    <div class="avp-f">${nao.length ? '<button type="button" class="linkbtn" data-act="avp-todos">Marcar todos como lidos</button>' : '<span></span>'}<a href="#recepcao" data-act="avp-fechar-ir">Ver fila da recepção</a></div>`;
+}
+function avPainelPos() {
+  const box = $('#avpainel'), s = $('#sino'); if (!box || !s) return;
+  const r = s.getBoundingClientRect();
+  box.style.top = `${Math.round(r.bottom + 8)}px`;
+  box.style.right = `${Math.max(16, Math.round(window.innerWidth - r.right))}px`;
+}
+function avPainelAlternar(abrir) {
+  let box = $('#avpainel');
+  if (!box) { document.body.insertAdjacentHTML('beforeend', '<div id="avpainel" class="avpainel" role="dialog" aria-label="Avisos" hidden></div>'); box = $('#avpainel'); }
+  const vai = abrir === undefined ? box.hidden : abrir;
+  box.hidden = !vai;
+  if (vai) { avFiltro = avNaoLidos().length ? 'nao' : 'todos'; avPainelPos(); avPainelRender(); const f = box.querySelector('button'); if (f) f.focus(); }
+  const s = $('#sino'); if (s) s.setAttribute('aria-expanded', vai);
+}
+function avMarcarLido(k, atual, como) {
+  const agoraT = agoraS();
+  if (atual) { k.aviso = { ...k.aviso, cienteEm: agoraT, como }; }
+  else { const a = (k.avisosAnt || []).find(x => x.para === USUARIO && !x.cienteEm); if (a) { a.cienteEm = agoraT; a.como = como; registrar('trilha', 'Aviso repassado marcado como lido', { checkin: k.id, nome: k.nome }, { como }); } }
+}
+document.addEventListener('click', e => {
+  const box = $('#avpainel');
+  const a = e.target.closest('[data-act^="avp-"]');
+  if (!a) { if (box && !box.hidden && !e.target.closest('#avpainel, #sino')) avPainelAlternar(false); return; }
+  const id = +a.dataset.id || 0, k = D.checkins.find(x => x.id === id), atual = a.dataset.atual === '1';
+  switch (a.dataset.act) {
+    case 'avp-f': avFiltro = a.dataset.k; avPainelRender(); break;
+    case 'avp-lido': if (k) { avMarcarLido(k, atual, 'Marcado como lido'); save(); render(); } break;
+    case 'avp-todos': avHist().filter(h => !h.a.cienteEm).forEach(h => avMarcarLido(h.k, h.atual, 'Marcado como lido')); save(); toast('Todos os avisos marcados como lidos'); render(); break;
+    case 'avp-abrir': {
+      if (!k) return;
+      if ((atual ? !k.aviso.cienteEm : true)) avMarcarLido(k, atual, 'Aberto pelo histórico');
+      save(); avPainelAlternar(false);
+      if (k.status === 'Atendido' && k.visita) { render(); openItem('visita', k.visita); }
+      else if (k.status === 'Saiu sem atendimento') { render(); openItem('checkin', k.id); }
+      else if (cur() !== 'recepcao') location.hash = 'recepcao'; else render();
+      break;
+    }
+    case 'avp-fechar-ir': avPainelAlternar(false); location.hash = 'recepcao'; break;
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#avpainel') && !$('#avpainel').hidden) { avPainelAlternar(false); const s = $('#sino'); if (s) s.focus(); } });
+window.addEventListener('resize', () => { const b = $('#avpainel'); if (b && !b.hidden) avPainelPos(); });
+{ const s = $('#sino'); if (s) { s.setAttribute('aria-haspopup', 'dialog'); s.setAttribute('aria-expanded', 'false'); } }
+
+const avpCss = document.createElement('style');
+avpCss.textContent = `
+.avpainel{position:fixed;z-index:36;width:min(380px,calc(100vw - 32px));max-height:min(560px,calc(100vh - 90px));display:flex;flex-direction:column;background:var(--surface);color:var(--fg);border:1px solid var(--line-strong);border-radius:6px;box-shadow:var(--shadow)}
+.avp-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.avp-h b{font-size:15px}
+.avp-h .seg button{height:28px;font-size:12.5px;display:inline-flex;gap:5px;align-items:center}
+.avp-lista{list-style:none;margin:0;padding:0;overflow:auto;flex:1}
+.avp-lista li{border-top:1px solid var(--line);position:relative}
+.avp-lista li:first-child{border-top:0}
+.avp-lista li.novo{background:var(--accent-soft)}
+.avp-item{display:grid;grid-template-columns:10px minmax(0,1fr);gap:10px;width:100%;text-align:left;border:0;background:none;padding:12px 14px 4px;cursor:pointer;font:inherit;color:inherit}
+.avp-item:hover .avp-txt b{text-decoration:underline}
+.avp-pt{width:8px;height:8px;border-radius:50%;margin-top:6px;background:transparent}
+.novo .avp-pt{background:var(--accent)}
+.avp-txt{display:grid;gap:2px;min-width:0}
+.avp-txt>span{font-size:12.5px;color:var(--muted)}
+.lido .avp-txt b{font-weight:500;color:var(--muted)}
+.avp-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:2px}
+.avp-lido{padding:0 14px 10px 34px;font-size:12px}
+.avp-vazio{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px}
+.avp-f{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);font-size:12.5px}
+.avp-f a{color:var(--accent)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:560px){.avpainel{left:16px;right:16px!important;width:auto}}
+`;
+document.head.appendChild(avpCss);
 render();
 </script>
 <script>
