@@ -5678,6 +5678,363 @@ document.head.appendChild(cpCss);
 render();
 </script>
 <script>
+/* =====================================================================
+   v18: caixa de entrada única — WhatsApp, e-mail, Instagram e Messenger.
+   Cada contato que escreve vira um lead; a localização (CEP, UF,
+   município) vem do DDD, de um CEP escrito na conversa ou da equipe.
+   ===================================================================== */
+const CX_TIPO = { wa: 'WhatsApp', email: 'E-mail', ig: 'Instagram', fb: 'Messenger' };
+const CX_IC = {
+  wa: '<path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9.5 9.5c.3 2 2 3.9 4.5 4.6"/>',
+  email: '<rect x="3" y="5.5" width="18" height="13" rx="1.5"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/>',
+  ig: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="12" cy="12" r="3.6"/><path d="M16.8 7.2h.01"/>',
+  fb: '<path d="M4 18.5V12a8 7.5 0 1 1 3.5 6.2z"/><path d="m8 13.5 3-3 2.5 2 3-3"/>'
+};
+const cxIc = (t, s = 15) => `<svg class="cx-ic cx-${t}" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="${CX_TIPO[t]}">${CX_IC[t]}</svg>`;
+const DDD_UF = (() => { const m = {}, add = (uf, ...dd) => dd.forEach(d => m[d] = uf);
+  add('SP', 11, 12, 13, 14, 15, 16, 17, 18, 19); add('RJ', 21, 22, 24); add('ES', 27, 28); add('MG', 31, 32, 33, 34, 35, 37, 38); add('PR', 41, 42, 43, 44, 45, 46); add('SC', 47, 48, 49);
+  add('RS', 51, 53, 54, 55); add('DF', 61); add('GO', 62, 64); add('TO', 63); add('MT', 65, 66); add('MS', 67); add('AC', 68); add('RO', 69); add('BA', 71, 73, 74, 75, 77); add('SE', 79);
+  add('PE', 81, 87); add('AL', 82); add('PB', 83); add('RN', 84); add('CE', 85, 88); add('PI', 86, 89); add('PA', 91, 93, 94); add('AM', 92, 97); add('RR', 95); add('AP', 96); add('MA', 98, 99); return m; })();
+// CEPs de demonstração (conferidos na ViaCEP): a detecção funciona mesmo sem acesso à consulta
+const CEPS_DEMO = { '18035060': ['SP', 'Sorocaba', 'Centro'], '01310100': ['SP', 'São Paulo', 'Bela Vista'], '20040020': ['RJ', 'Rio de Janeiro', 'Centro'], '30130010': ['MG', 'Belo Horizonte', 'Centro'], '80020310': ['PR', 'Curitiba', 'Centro'], '90010150': ['RS', 'Porto Alegre', 'Centro Histórico'], '70040010': ['DF', 'Brasília', 'Asa Norte'], '50030230': ['PE', 'Recife', 'Recife'] };
+const cxAgo = m => { const d = new Date(Date.now() - m * 6e4); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const cxHora = t => t.slice(0, 10) === hoje() ? t.slice(11, 16) : t.slice(0, 10) === iso(addDays(new Date(new Date().setHours(0, 0, 0, 0)), -1)) ? 'ontem' : fDs(t.slice(0, 10));
+const cxId = l => l.tel || l.email || l.ig || l.fb || '';
+
+function seedCaixa() {
+  const canais = [
+    { id: 1, tipo: 'wa', nome: 'Gabinete — Atendimento', ident: '(15) 90000-0001' },
+    { id: 2, tipo: 'email', nome: 'E-mail do gabinete', ident: 'atendimento@gabinete-exemplo.org' },
+    { id: 3, tipo: 'ig', nome: 'Instagram do mandato', ident: '@mandato.exemplo' },
+    { id: 4, tipo: 'fb', nome: 'Página do mandato', ident: 'Mandato Exemplo' }
+  ];
+  const L = (id, nome, ident, loc = {}) => ({ id, nome, ...ident, uf: '', municipio: '', bairro: '', cep: '', locFonte: '', contato: null, ...loc });
+  const leads = [
+    L(1, 'Rosana Prates', { tel: '(15) 90000-0311' }, { uf: 'SP', locFonte: 'DDD do telefone' }),
+    L(2, 'Fernando Quaresma', { email: 'fernando.quaresma@exemplo.com' }),
+    L(3, 'Coletivo Jardins', { ig: '@coletivo.jardins' }),
+    L(4, 'Marta Ilha', { fb: 'Marta Ilha' }),
+    L(5, 'Joel Barcellos', { tel: '(21) 90000-0412' }, { uf: 'RJ', municipio: 'Rio de Janeiro', bairro: 'Centro', cep: '20040-020', locFonte: 'CEP informado na conversa' }),
+    L(6, 'Associação de Moradores da Vila Nova', { email: 'contato@assocvilanova.exemplo.org' }, { uf: 'SP', municipio: 'Sorocaba', locFonte: 'Informado pela equipe' }),
+    L(7, 'Ana Tavares', { ig: '@ana.tavares_' }),
+    L(8, 'Celso Antunes', { tel: '(31) 90000-0513' }, { uf: 'MG', municipio: 'Belo Horizonte', bairro: 'Centro', cep: '30130-010', locFonte: 'CEP informado na conversa' }),
+    L(9, 'Luzia Fontes', { tel: '(15) 90000-0614' }, { uf: 'SP', municipio: 'Sorocaba', bairro: 'Centro', cep: '18035-060', locFonte: 'CEP informado na conversa' }),
+    L(10, 'Redação Gazeta do Vale', { email: 'redacao@gazetadovale.exemplo' }),
+    L(11, 'Daniel Rossi', { tel: '(41) 90000-0715' }, { uf: 'PR', locFonte: 'DDD do telefone' }),
+    L(12, 'Rita Calado', { fb: 'Rita Calado' }, { uf: 'RS', municipio: 'Porto Alegre', locFonte: 'Informado pela equipe' })
+  ];
+  leads.forEach((l, i) => l.criadoEm = cxAgo([9, 41, 5, 18, 300, 200, 150, 2900, 3000, 4400, 2, 5800][i]));
+  const C = (id, canal, lead, st, ag, msgs, extra = {}) => ({ id, canal, lead, st, ag, msgs, proto: `MSG-${new Date().getFullYear()}-${pad(id).padStart(4, '0')}`, unr: st === 'espera' ? msgs.filter(m => m.de === 'c').length : 0, ...extra });
+  const m = (de, tx, min, x = {}) => ({ de, tx, em: cxAgo(min), ...x });
+  const conversas = [
+    C(1, 1, 1, 'espera', null, [m('c', 'Bom dia! A iluminação da rua Sete de Setembro está apagada há uma semana.', 9), m('c', 'À noite fica perigoso para quem volta do trabalho.', 8)]),
+    C(2, 2, 2, 'espera', null, [m('c', 'Prezados, gostaria de solicitar uma audiência com a vereadora para tratar do transporte intermunicipal até Votorantim. Os horários foram reduzidos e muitos trabalhadores estão chegando atrasados.\n\nAtenciosamente,\nFernando Quaresma', 41)], { assunto: 'Pedido de audiência sobre transporte intermunicipal' }),
+    C(3, 3, 3, 'espera', null, [m('c', 'Respondeu ao seu story', 6, { story: true }), m('c', 'Oi! Vocês podem divulgar nossa feira de domingo na praça?', 5)]),
+    C(4, 4, 4, 'espera', null, [m('c', 'Bom dia, como faço para pedir uma visita da vereadora na escola dos meus filhos?', 18)]),
+    C(5, 1, 5, 'atendimento', 2, [m('c', 'Olá, meu pai tem 70 anos e queria saber como pedir o BPC.', 310), m('a', 'Olá, Joel! Posso te orientar. Pode me informar o seu CEP para eu indicar o CRAS mais próximo?', 305, { by: 2 }), m('c', '20040-020', 300), m('a', 'Obrigada! O atendimento é feito pelo CRAS da região central. Vou te mandar o endereço e a lista de documentos.', 296, { by: 2 })]),
+    C(6, 2, 6, 'atendimento', 1, [m('c', 'Convidamos a vereadora para a reunião da associação na quinta, às 19h, no salão da igreja.', 210), m('a', 'Obrigado pelo convite! Vou confirmar na agenda e retorno até amanhã.', 200, { by: 1 })], { assunto: 'Convite: reunião da associação de moradores' }),
+    C(7, 3, 7, 'atendimento', 3, [m('c', 'Mencionou você no story', 160, { story: true }), m('c', 'Adorei o mutirão de limpeza! Quando tem o próximo?', 150), m('a', 'Que bom que gostou, Ana! O próximo é dia 8, no Recanto Verde.', 140, { by: 3 })]),
+    C(8, 1, 8, 'concluido', 2, [m('c', 'Consegui marcar a consulta, muito obrigado pela ajuda!', 2900), m('a', 'Que ótimo, Celso! Qualquer coisa estamos por aqui.', 2890, { by: 2 })]),
+    C(9, 1, 9, 'concluido', 5, [m('c', 'A poda da árvore foi feita. Pode encerrar.', 3000), m('a', 'Ótimo, Luzia! Encerrando o atendimento.', 2995, { by: 5 })]),
+    C(10, 2, 10, 'concluido', 3, [m('c', 'Gostaríamos de uma entrevista sobre o projeto das calçadas.', 4400), m('a', 'Claro! Podemos amanhã às 11h, por telefone.', 4380, { by: 3 })], { assunto: 'Pedido de entrevista' }),
+    C(11, 1, 11, 'espera', null, [m('c', 'Boa tarde. Vocês ajudam com pedido de vaga em creche?', 2)]),
+    C(12, 4, 12, 'concluido', 2, [m('c', 'Obrigada pelo retorno sobre o abrigo de ônibus!', 5800)])
+  ];
+  return { canais, leads, conversas };
+}
+{
+  const _seedExtra5 = seedExtra;
+  seedExtra = function () { const x = _seedExtra5(); x.caixa = seedCaixa(); return x; };
+  window.seedExtra = seedExtra;
+  if (!D.caixa) { D.caixa = seedCaixa(); save(); }
+  if (!ORIGENS.includes('WhatsApp')) ORIGENS.push('WhatsApp', 'E-mail');
+}
+const CX = () => D.caixa;
+const cxLead = id => CX().leads.find(l => l.id === id);
+const cxCanal = id => CX().canais.find(c => c.id === id);
+const cxConv = id => CX().conversas.find(c => c.id === id);
+const cxProx = coll => CX()[coll].reduce((m, x) => Math.max(m, x.id), 0) + 1;
+const cxLoc = l => l.municipio ? 'mun' : l.uf ? 'uf' : 'nada';
+const cxLocTxt = l => l.municipio ? `${l.municipio}/${l.uf}` : l.uf ? `${UF_NOME && UF_NOME[l.uf] ? UF_NOME[l.uf] : l.uf} (só UF)` : 'Sem localização';
+
+/* ---------- localização: DDD, CEP na conversa, edição da equipe ---------- */
+function cxDDD(l) { if (l.uf || !l.tel) return; const d = +soDig(l.tel).slice(0, 2); if (DDD_UF[d]) { l.uf = DDD_UF[d]; l.locFonte = 'DDD do telefone'; } }
+async function cxCep(cep) {
+  const d = cpfDig(cep);
+  if (CEPS_DEMO[d]) { const [uf, municipio, bairro] = CEPS_DEMO[d]; return { uf, municipio, bairro }; }
+  try { const r = await buscaCep(d); if (r && !r.nao) return { uf: r.uf, municipio: r.cidade, bairro: r.bairro }; } catch (e) {}
+  return null;
+}
+async function cxDetectarCep(conv, tx) {
+  const m = tx.match(/\b(\d{5})-?(\d{3})\b/); if (!m) return;
+  const l = cxLead(conv.lead); if (l.cep) return;
+  const r = await cxCep(m[1] + m[2]); if (!r) return;
+  Object.assign(l, { cep: `${m[1]}-${m[2]}`, uf: r.uf, municipio: r.municipio, bairro: r.bairro || '', locFonte: 'CEP informado na conversa' });
+  conv.msgs.push({ de: 'sys', tx: `Localização preenchida pelo CEP ${l.cep}: ${l.municipio}/${l.uf}`, em: agora() });
+  save(); render();
+}
+
+/* ---------- tela ---------- */
+function cxSt() { return ui('cx', { tab: 'conv', fila: 'espera', canal: '', q: '', sel: 0, lq: '', lloc: '', lcanal: '' }); }
+function vCaixa() {
+  const st = cxSt(), X = CX(), esp = X.conversas.filter(c => c.st === 'espera').length;
+  const tab = (k, l, n) => `<button type="button" class="${st.tab === k ? 'on' : ''}" data-act="cx-tab" data-k="${k}">${l}${n != null ? `<span class="num">${n}</span>` : ''}</button>`;
+  return `<div class="wrap cx">${head('Caixa de entrada', 'WhatsApp, e-mail, Instagram e Messenger num só lugar. Cada pessoa que escreve vira um lead, com a localização para o mapa.', `<button type="button" class="btn" data-act="cx-simular">Simular mensagem recebida</button>`)}
+    <div class="pill-tabs">${tab('conv', 'Conversas', esp)}${tab('leads', 'Leads', X.leads.length)}</div>
+    ${st.tab === 'leads' ? cxLeads() : cxInbox()}</div>`;
+}
+function cxInbox() {
+  const st = cxSt(), X = CX(), q = norm(st.q);
+  const cont = f => X.conversas.filter(c => c.st === f && (!st.canal || cxCanal(c.canal).tipo === st.canal)).length;
+  const L = sortBy(X.conversas.filter(c => c.st === st.fila && (!st.canal || cxCanal(c.canal).tipo === st.canal) && (!q || norm(`${cxLead(c.lead).nome} ${cxId(cxLead(c.lead))} ${c.proto} ${c.assunto || ''}`).includes(q))), c => c.msgs[c.msgs.length - 1].em, -1);
+  const sel = cxConv(st.sel);
+  return `<div class="cx-inbox ${sel ? 'tem-sel' : ''}">
+    <section class="cx-lista" aria-label="Conversas">
+      <div class="cx-lh">
+        <div class="seg cx-filas">${[['espera', 'Em espera'], ['atendimento', 'Atendendo'], ['concluido', 'Concluídas']].map(([k, l]) => `<button type="button" class="${st.fila === k ? 'on' : ''}" data-act="cx-fila" data-k="${k}">${l} <b class="num">${cont(k)}</b></button>`).join('')}</div>
+        <input class="search" type="search" id="q-cx" data-q="cx" value="${esc(st.q)}" placeholder="Buscar por nome, contato ou protocolo" aria-label="Buscar conversas">
+        <div class="cx-canais">${['', 'wa', 'email', 'ig', 'fb'].map(t => `<button type="button" class="${st.canal === t ? 'on' : ''}" data-act="cx-canal" data-k="${t}">${t ? cxIc(t, 14) + CX_TIPO[t] : 'Todos'}</button>`).join('')}</div>
+      </div>
+      <div class="cx-itens">${L.map(c => { const l = cxLead(c.lead), ca = cxCanal(c.canal), u = c.msgs.filter(m => m.de !== 'sys' && m.de !== 'nota').pop() || c.msgs[c.msgs.length - 1];
+        return `<button type="button" class="cx-item ${st.sel === c.id ? 'on' : ''}" data-act="cx-sel" data-id="${c.id}">
+          <span class="cx-av">${esc(initials(l.nome))}${cxIc(ca.tipo, 13)}</span>
+          <span class="cx-n">${esc(ca.tipo === 'ig' && l.ig ? l.ig : l.nome)}</span><span class="cx-t num">${cxHora(u.em)}</span>
+          <span class="cx-pv">${c.assunto ? `<b>${esc(c.assunto)}</b> · ` : ''}${u.de === 'a' ? 'Você: ' : ''}${esc(u.story ? (u.tx || 'Story') : u.tx)}</span>${c.unr ? `<span class="cx-unr num">${c.unr}</span>` : '<span></span>'}
+          <span class="cx-mt">${c.ag ? `<span class="note">com ${esc(first(mName(c.ag)))}</span>` : ''}<span class="cx-loc ${cxLoc(l)}">${esc(cxLocTxt(l))}</span></span>
+        </button>`; }).join('') || `<p class="note cx-vazio">Nenhuma conversa ${st.fila === 'espera' ? 'em espera' : st.fila === 'atendimento' ? 'em atendimento' : 'concluída'} com esse filtro.</p>`}</div>
+    </section>
+    <section class="cx-conv" aria-label="Conversa">${sel ? cxConversa(sel) : '<div class="cx-sem"><b>Escolha uma conversa</b><span>Mensagens de WhatsApp, e-mail, Instagram e Messenger chegam todas nesta caixa.</span></div>'}</section>
+    <section class="cx-lado" aria-label="Lead">${sel ? cxLado(sel) : ''}</section>
+  </div>`;
+}
+const CX_RAPIDAS = ['Atendemos de segunda a sexta, das 8h às 18h.', 'Encaminhamos ofício ao órgão responsável e retornaremos em até 10 dias úteis.', 'Para registrar seu pedido, pode me informar o seu CEP?'];
+function cxConversa(c) {
+  const l = cxLead(c.lead), ca = cxCanal(c.canal), meu = c.st === 'atendimento' && c.ag === USUARIO;
+  let dia = '', corpo = '';
+  c.msgs.forEach(m => {
+    const d = m.em.slice(0, 10); if (d !== dia) { dia = d; corpo += `<span class="cx-dia">${d === hoje() ? 'Hoje' : fD(d)}</span>`; }
+    if (m.de === 'sys') { corpo += `<p class="cx-sys">${esc(m.tx)} · ${fT(m.em)}</p>`; return; }
+    if (m.de === 'nota') { corpo += `<div class="cx-bal out nota"><span class="by">Nota interna · ${esc(mName(m.by))}</span><span class="tx">${esc(m.tx)}</span><span class="tm">${fT(m.em)}</span></div>`; return; }
+    const out = m.de === 'a';
+    corpo += `<div class="cx-bal ${out ? 'out' : ''} ${ca.tipo === 'email' ? 'mail' : ''}">${out ? `<span class="by">${esc(mName(m.by))}</span>` : ''}${m.story ? `<span class="cx-story">${esc(m.tx)} · story visível por 24 h</span>` : `<span class="tx">${esc(m.tx)}</span>`}<span class="tm">${fT(m.em)}</span></div>`;
+  });
+  const rod = c.st === 'espera' ? `<div class="cx-barra"><span class="note">Aguardando atendimento desde ${fT(c.msgs[0].em)}.</span><button type="button" class="btn primary" data-act="cx-iniciar" data-id="${c.id}">Iniciar atendimento</button></div>`
+    : c.st === 'concluido' ? `<div class="cx-barra"><span class="note">Concluída${c.ag ? ` por ${esc(mName(c.ag))}` : ''}.</span><button type="button" class="btn" data-act="cx-reabrir" data-id="${c.id}">Reabrir</button></div>`
+    : !meu ? `<div class="cx-barra"><span class="note">Em atendimento com <b>${esc(mName(c.ag))}</b>.</span><button type="button" class="btn" data-act="cx-iniciar" data-id="${c.id}">Assumir conversa</button></div>`
+    : `<div class="cx-comp"><div class="cx-rap">${CX_RAPIDAS.map((r, i) => `<button type="button" data-act="cx-rapida" data-i="${i}" title="${esc(r)}">${i === 2 ? 'Pedir CEP' : esc(r.slice(0, 30)) + '…'}</button>`).join('')}</div>
+        <div class="cx-esc"><textarea id="cx-msg" rows="2" placeholder="${ca.tipo === 'email' ? `Responder por e-mail a ${esc(l.email)}` : `Escrever para ${esc(first(l.nome))} pelo ${CX_TIPO[ca.tipo]}`}"></textarea><button type="button" class="btn primary" data-act="cx-enviar" data-id="${c.id}">Enviar</button></div>
+        <label class="switch cx-nota"><input type="checkbox" id="cx-nota">Nota interna (só a equipe vê)</label></div>`;
+  return `<div class="cx-ch"><button type="button" class="icon-btn cx-volta" data-act="cx-sel" data-id="0" aria-label="Voltar à lista">‹</button>
+      <span class="cx-av">${esc(initials(l.nome))}${cxIc(ca.tipo, 13)}</span>
+      <div class="cx-quem"><b>${esc(l.nome)}</b><span class="note">${CX_TIPO[ca.tipo]} · ${esc(cxId(l))} · <span class="mono">${esc(c.proto)}</span></span>${c.assunto ? `<span class="cx-ass">${esc(c.assunto)}</span>` : ''}</div>
+      ${c.st === 'atendimento' ? `<div class="cx-acoes"><select id="cx-transf" class="fsel" aria-label="Transferir para"><option value="">Transferir para…</option>${D.equipe.filter(p => p.id !== c.ag).map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('')}</select><button type="button" class="btn sm" data-act="cx-concluir" data-id="${c.id}">Concluir</button></div>` : ''}
+    </div>
+    <div class="cx-msgs" id="cx-msgs">${corpo}</div>${rod}`;
+}
+function cxLado(c) {
+  const l = cxLead(c.lead), outras = CX().conversas.filter(x => x.lead === l.id && x.id !== c.id), ct = l.contato && byId('contatos', l.contato);
+  const sug = !ct && l.tel ? D.contatos.find(x => soDig(x.telefone) === soDig(l.tel)) : !ct && l.email ? D.contatos.find(x => x.email && x.email.toLowerCase() === l.email.toLowerCase()) : null;
+  return `<div class="cx-lb">
+    <div class="cx-lhd"><span class="cx-av lg">${esc(initials(l.nome))}</span><b>${esc(l.nome)}</b><span class="note">Lead desde ${fD(l.criadoEm)} · ${CX_TIPO[cxCanal(c.canal).tipo]}</span></div>
+    <div class="sect"><h3>Contato</h3><dl class="kv">${l.tel ? `<dt>Telefone</dt><dd class="mono">${esc(l.tel)}</dd>` : ''}${l.email ? `<dt>E-mail</dt><dd>${esc(l.email)}</dd>` : ''}${l.ig ? `<dt>Instagram</dt><dd>${esc(l.ig)}</dd>` : ''}${l.fb ? `<dt>Messenger</dt><dd>${esc(l.fb)}</dd>` : ''}</dl></div>
+    <div class="sect"><h3>Localização</h3>
+      <p class="cx-locst ${cxLoc(l)}">${esc(cxLocTxt(l))}${l.bairro ? ` · ${esc(l.bairro)}` : ''}${l.locFonte ? `<span class="note">${esc(l.locFonte)}${l.cep ? ` · CEP ${esc(l.cep)}` : ''}</span>` : ''}</p>
+      <div class="cx-locf">
+        <div class="fld"><label for="cx-cep">CEP</label><input id="cx-cep" inputmode="numeric" maxlength="9" placeholder="00000-000" value="${esc(l.cep)}"></div>
+        <div class="fld"><label for="cx-uf">UF</label><select id="cx-uf"><option value="">—</option>${UFS.map(u => `<option ${l.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+        <div class="fld cx-mun"><label for="cx-mun">Município</label><input id="cx-mun" value="${esc(l.municipio)}" placeholder="Ex.: Sorocaba"></div>
+      </div>
+      <div class="ck-act"><button type="button" class="btn sm" data-act="cx-loc-salvar" data-id="${l.id}">Salvar localização</button>${!l.cep && c.st === 'atendimento' && c.ag === USUARIO ? `<button type="button" class="linkbtn" data-act="cx-rapida" data-i="2">Pedir CEP na conversa</button>` : ''}</div>
+      <p class="hint">Um CEP escrito na conversa é reconhecido sozinho. Pelo DDD do telefone, o sistema já sabe a UF.</p>
+    </div>
+    <div class="sect"><h3>Lead</h3>${ct ? `<p>Cadastrado como contato: <a href="#" data-act="open" data-type="contato" data-id="${ct.id}">${esc(ct.nome)}</a></p>`
+      : `${sug ? `<p class="note">Já existe um contato com este ${l.tel ? 'telefone' : 'e-mail'}: <b>${esc(sug.nome)}</b>.</p><div class="ck-act"><button type="button" class="btn sm primary" data-act="cx-vincular" data-id="${l.id}" data-c="${sug.id}">Vincular a ${esc(first(sug.nome))}</button><button type="button" class="btn sm" data-act="cx-converter" data-id="${l.id}">Criar outro contato</button></div>` : `<div class="ck-act"><button type="button" class="btn sm primary" data-act="cx-converter" data-id="${l.id}">Cadastrar como contato</button></div>`}`}
+      ${ct ? `<div class="ck-act" style="margin-top:8px"><button type="button" class="btn sm" data-act="new" data-type="demanda" data-preset='${esc(JSON.stringify({ solicitante: ct.id, titulo: c.assunto || '' }))}'>Abrir demanda</button></div>` : ''}</div>
+    ${outras.length ? `<div class="sect"><h3>Outras conversas</h3><ul class="timeline">${outras.map(o => `<li><span class="d">${fD(o.msgs[0].em)}</span><span><span class="k">${CX_TIPO[cxCanal(o.canal).tipo]} · ${o.st === 'concluido' ? 'concluída' : 'aberta'}</span><a href="#" data-act="cx-sel" data-id="${o.id}">${esc(o.proto)}</a></span></li>`).join('')}</ul></div>` : ''}
+  </div>`;
+}
+
+/* ---------- leads e localização para o mapa ---------- */
+function cxLeads() {
+  const st = cxSt(), X = CX(), lq = ui('cxl').q, q = norm(lq);
+  const canaisDe = l => [...new Set(X.conversas.filter(c => c.lead === l.id).map(c => cxCanal(c.canal).tipo))];
+  const L = sortBy(X.leads.filter(l => (!st.lloc || cxLoc(l) === st.lloc) && (!st.lcanal || canaisDe(l).includes(st.lcanal)) && (!q || norm(`${l.nome} ${cxId(l)} ${l.municipio} ${l.uf}`).includes(q))), l => l.criadoEm, -1);
+  const n = X.leads.length, mun = X.leads.filter(l => l.municipio).length, so = X.leads.filter(l => !l.municipio && l.uf).length, nada = n - mun - so, conv = X.leads.filter(l => l.contato).length;
+  const porUf = Object.entries(X.leads.filter(l => l.uf).reduce((a, l) => (a[l.uf] = (a[l.uf] || 0) + 1, a), {})).sort((a, b) => b[1] - a[1]);
+  const porMun = Object.entries(X.leads.filter(l => l.municipio).reduce((a, l) => { const k = `${l.municipio}/${l.uf}`; a[k] = (a[k] || 0) + 1; return a; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  return `<section class="kpis">
+      <div class="kpi"><span class="l">Leads</span><span class="v">${fN(n)}</span><span class="d">${fN(conv)} já cadastrados como contato</span></div>
+      <div class="kpi"><span class="l">Prontos para o mapa</span><span class="v">${fN(mun)}</span><span class="d">${pct(mun, n, 0)} com município</span></div>
+      <div class="kpi"><span class="l">Só a UF</span><span class="v">${fN(so)}</span><span class="d">pelo DDD; falta o CEP</span></div>
+      <div class="kpi"><span class="l">Sem localização</span><span class="v">${fN(nada)}</span><span class="d ${nada ? 'bad' : ''}">e-mail e redes sociais, sem telefone</span></div>
+    </section>
+    <div class="grid-3">
+      <section class="span-2" style="min-width:0">
+        <div class="toolbar"><input class="search" type="search" id="q-cxl" data-q="cxl" value="${esc(lq)}" placeholder="Buscar lead, contato ou cidade" aria-label="Buscar lead">
+          <select class="fsel" id="cx-lloc" aria-label="Localização"><option value="">Localização: todas</option><option value="mun" ${st.lloc === 'mun' ? 'selected' : ''}>Com município</option><option value="uf" ${st.lloc === 'uf' ? 'selected' : ''}>Só a UF</option><option value="nada" ${st.lloc === 'nada' ? 'selected' : ''}>Sem localização</option></select>
+          <select class="fsel" id="cx-lcanal" aria-label="Canal"><option value="">Canal: todos</option>${Object.entries(CX_TIPO).map(([k, v]) => `<option value="${k}" ${st.lcanal === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+          <button type="button" class="btn sm" data-act="cx-csv">Exportar para o mapa (CSV)</button></div>
+        <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Canais</th><th>Localização</th><th>Desde</th><th>Situação</th></tr></thead><tbody>
+          ${L.map(l => { const cv = X.conversas.filter(c => c.lead === l.id).sort((a, b) => a.msgs[a.msgs.length - 1].em < b.msgs[b.msgs.length - 1].em ? 1 : -1)[0];
+            return `<tr class="click" tabindex="0" data-act="cx-abrir-lead" data-id="${cv ? cv.id : 0}"><td><div class="t">${esc(l.nome)}</div><div class="s">${esc(cxId(l))}</div></td><td>${canaisDe(l).map(t => cxIc(t, 15)).join(' ')}</td>
+              <td><span class="cx-loc ${cxLoc(l)}">${esc(cxLocTxt(l))}</span>${l.locFonte ? `<div class="s">${esc(l.locFonte)}</div>` : ''}</td><td class="num">${fD(l.criadoEm)}</td><td>${l.contato ? chip('Na base') : '<span class="chip s-info">Lead</span>'}</td></tr>`; }).join('') || '<tr class="empty-row"><td colspan="5">Nenhum lead com esses filtros.</td></tr>'}
+        </tbody></table></div>
+      </section>
+      <section class="panel"><div class="panel-h"><h2>Onde estão</h2><span class="meta">${fN(mun + so)} com localização</span></div><div class="panel-b" style="display:grid;gap:14px">
+        <div><p class="eyebrow">Por UF</p>${porUf.length ? bars(porUf.map(([l, v]) => ({ l: UF_NOME && UF_NOME[l] ? UF_NOME[l] : l, v }))) : '<p class="note">Ainda sem dados.</p>'}</div>
+        <div><p class="eyebrow">Por município</p>${porMun.length ? bars(porMun.map(([l, v]) => ({ l, v }))) : '<p class="note">Nenhum município ainda.</p>'}</div>
+        <p class="note">O CSV traz município, UF, CEP e a quantidade de leads, pronto para plotar num mapa.</p>
+      </div></section>
+    </div>`;
+}
+
+/* ---------- ações ---------- */
+ROUTES.caixa = { t: 'Caixa de entrada', g: 'Atendimento', r: vCaixa, n: () => (D.caixa ? D.caixa.conversas.filter(c => c.st === 'espera').length : 0) || '' };
+{ const A = AREAS.find(a => a.k === 'atend'); if (!A.p.includes('caixa')) A.p.splice(A.p.indexOf('recepcao') + 1, 0, 'caixa'); }
+PAGE_DESC.caixa = 'WhatsApp, e-mail e redes sociais num só lugar';
+const cxRolar = () => setTimeout(() => { const m = $('#cx-msgs'); if (m) m.scrollTop = m.scrollHeight; }, 0);
+const CX_NOVOS = [
+  ['wa', { tel: '(11) 90000-0821' }, 'Priscila Moura', 'Oi! Tem mutirão de castração de animais previsto para o bairro?'],
+  ['email', { email: 'diretoria@escolaestadual.exemplo.org' }, 'Escola Estadual Bela Vista', 'Gostaríamos de convidar a vereadora para a feira de ciências no dia 30.'],
+  ['ig', { ig: '@ruas.limpas' }, 'Ruas Limpas', 'Vocês viram o lixo acumulado na praça? Mandamos fotos no direct.'],
+  ['fb', { fb: 'Osvaldo Peixoto' }, 'Osvaldo Peixoto', 'Bom dia, a obra da ponte vai atrasar mais?'],
+  ['wa', { tel: '(61) 90000-0922' }, 'Thaís Bittencourt', 'Boa tarde. Preciso de orientação para regularizar meu MEI.'],
+  ['wa', { tel: '(51) 90000-1023' }, 'Gilmar Reis', 'Meu CEP é 90010-150. Queria saber sobre o programa de reforma de casas.']
+];
+let cxNovoI = 0;
+function cxSimular() {
+  const [tipo, ident, nome, tx] = CX_NOVOS[cxNovoI++ % CX_NOVOS.length], X = CX(), canal = X.canais.find(c => c.tipo === tipo);
+  let l = X.leads.find(x => cxId(x) === Object.values(ident)[0]);
+  if (!l) { l = { id: cxProx('leads'), nome, ...ident, uf: '', municipio: '', bairro: '', cep: '', locFonte: '', contato: null, criadoEm: agora() }; cxDDD(l); X.leads.push(l); }
+  const c = { id: cxProx('conversas'), canal: canal.id, lead: l.id, st: 'espera', ag: null, unr: 1, proto: `MSG-${new Date().getFullYear()}-${pad(cxProx('conversas')).padStart(4, '0')}`, msgs: [{ de: 'c', tx, em: agora() }], ...(tipo === 'email' ? { assunto: 'Convite' } : {}) };
+  X.conversas.push(c); save();
+  toast(`${CX_TIPO[tipo]}: nova mensagem de ${first(nome)}${l.uf ? ` (${l.uf})` : ''}`);
+  render(); cxDetectarCep(c, tx);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act^="cx-"]'); if (!a) return;
+  const st = cxSt(), id = +a.dataset.id || 0, c = cxConv(id);
+  switch (a.dataset.act) {
+    case 'cx-tab': st.tab = a.dataset.k; render(); break;
+    case 'cx-fila': st.fila = a.dataset.k; st.sel = 0; render(); break;
+    case 'cx-canal': st.canal = a.dataset.k; render(); break;
+    case 'cx-sel': st.sel = id; if (c) { c.unr = 0; st.fila = c.st; save(); } render(); cxRolar(); break;
+    case 'cx-abrir-lead': if (c) { Object.assign(st, { tab: 'conv', sel: id, fila: c.st }); c.unr = 0; save(); render(); cxRolar(); } break;
+    case 'cx-iniciar': c.st = 'atendimento'; c.ag = USUARIO; c.unr = 0; c.msgs.push({ de: 'sys', tx: `${mName(USUARIO)} iniciou o atendimento`, em: agora() }); st.fila = 'atendimento'; save(); render(); cxRolar(); break;
+    case 'cx-concluir': c.st = 'concluido'; c.msgs.push({ de: 'sys', tx: `Concluída por ${mName(USUARIO)}`, em: agora() }); st.fila = 'concluido'; save(); toast('Conversa concluída'); render(); break;
+    case 'cx-reabrir': c.st = 'atendimento'; c.ag = USUARIO; c.msgs.push({ de: 'sys', tx: `Reaberta por ${mName(USUARIO)}`, em: agora() }); st.fila = 'atendimento'; save(); render(); cxRolar(); break;
+    case 'cx-rapida': { const t = $('#cx-msg'); if (t) { t.value = CX_RAPIDAS[+a.dataset.i]; t.focus(); } break; }
+    case 'cx-enviar': {
+      const t = $('#cx-msg'), tx = t.value.trim(); if (!tx) return t.focus();
+      const nota = $('#cx-nota').checked;
+      c.msgs.push({ de: nota ? 'nota' : 'a', tx, em: agora(), by: USUARIO }); save(); render(); cxRolar();
+      // demonstração: quem recebe o pedido de CEP responde em seguida
+      const l = cxLead(c.lead);
+      if (!nota && /\bCEP\b/i.test(tx) && !l.cep) setTimeout(() => {
+        const pref = Object.entries(CEPS_DEMO).find(([, v]) => v[0] === l.uf) || Object.entries(CEPS_DEMO)[(l.id * 3) % 8];
+        const cep = `${pref[0].slice(0, 5)}-${pref[0].slice(5)}`, msg = { de: 'c', tx: `Claro! É ${cep}.`, em: agora() };
+        c.msgs.push(msg); if (st.sel !== c.id) c.unr++; save(); render(); cxRolar(); cxDetectarCep(c, msg.tx);
+      }, 1800);
+      break;
+    }
+    case 'cx-loc-salvar': {
+      const l = cxLead(id), cep = cpfDig($('#cx-cep').value), uf = $('#cx-uf').value, mun = $('#cx-mun').value.trim().replace(/\s+/g, ' ');
+      if (cep && cep.length !== 8) return toast('O CEP precisa ter 8 números.');
+      const fim = () => { save(); toast('Localização salva'); render(); };
+      if (cep && cep !== cpfDig(l.cep)) { a.disabled = true; cxCep(cep).then(r => { if (r) Object.assign(l, { cep: `${cep.slice(0, 5)}-${cep.slice(5)}`, uf: r.uf, municipio: r.municipio, bairro: r.bairro || '', locFonte: 'CEP informado pela equipe' }); else Object.assign(l, { cep: `${cep.slice(0, 5)}-${cep.slice(5)}`, uf, municipio: mun, locFonte: 'Informado pela equipe' }); fim(); }); return; }
+      Object.assign(l, { uf, municipio: mun, locFonte: uf || mun ? 'Informado pela equipe' : '' }); fim(); break;
+    }
+    case 'cx-converter': {
+      const l = cxLead(id), conv = CX().conversas.find(x => x.lead === l.id), tipo = conv ? cxCanal(conv.canal).tipo : 'wa';
+      const ct = { id: nextId('contatos'), nome: l.nome, telefone: l.tel || '', email: l.email || '', nascimento: '', bairro: l.bairro || '', categoria: 'Eleitor', origem: tipo === 'wa' ? 'WhatsApp' : tipo === 'email' ? 'E-mail' : 'Redes sociais', indicadoPor: null, etiquetas: [], criadoEm: hoje(), obs: `Cadastrado pela caixa de entrada${l.ig ? ` · Instagram ${l.ig}` : ''}${l.fb ? ` · Messenger ${l.fb}` : ''}.`, endereco: l.municipio || l.cep ? { cep: l.cep, rua: '', numero: '', complemento: '', bairro: l.bairro, cidade: l.municipio, uf: l.uf } : null };
+      D.contatos.push(ct); l.contato = ct.id;
+      registrar('trilha', 'Lead cadastrado como contato', { contato: ct.id, nome: ct.nome }, { canal: CX_TIPO[tipo], localizacao: cxLocTxt(l) });
+      save(); toast(`${first(l.nome)} cadastrado na base de contatos`); render(); break;
+    }
+    case 'cx-vincular': { const l = cxLead(id); l.contato = +a.dataset.c; registrar('trilha', 'Lead vinculado a contato', { contato: l.contato, nome: cName(l.contato) }, { lead: l.nome }); save(); toast(`Vinculado a ${first(cName(l.contato))}`); render(); break; }
+    case 'cx-simular': cxSimular(); break;
+    case 'cx-csv': {
+      const g = {}; CX().leads.filter(l => l.municipio).forEach(l => { const k = `${l.municipio}|${l.uf}`; (g[k] = g[k] || { mun: l.municipio, uf: l.uf, ceps: new Set(), n: 0 }).n++; if (l.cep) g[k].ceps.add(l.cep); });
+      const linhas = [['municipio', 'uf', 'ceps', 'leads'], ...Object.values(g).map(x => [x.mun, x.uf, [...x.ceps].join(' '), x.n])];
+      const csv = linhas.map(r => r.map(v => /[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v)).join(';')).join('\n');
+      registrar('trilha', 'Exportação', { oque: 'Leads por município (mapa)' }, { formato: 'CSV', linhas: linhas.length - 1, cpf: 'Sem dados pessoais', finalidade: 'Mapa de leads' }); save();
+      baixar(`leads-por-municipio-${hoje()}.csv`, new Blob(['﻿' + csv], { type: 'text/csv' }), 'CSV salvo'); break;
+    }
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target, st = cxSt();
+  if (t.id === 'cx-transf' && t.value) { const c = cxConv(st.sel); c.ag = +t.value; c.msgs.push({ de: 'sys', tx: `Transferida de ${mName(USUARIO)} para ${mName(c.ag)}`, em: agora() }); save(); toast(`Conversa transferida para ${first(mName(c.ag))}`); render(); cxRolar(); }
+  else if (t.id === 'cx-lloc') { st.lloc = t.value; render(); }
+  else if (t.id === 'cx-lcanal') { st.lcanal = t.value; render(); }
+});
+document.addEventListener('input', e => { if (e.target.id === 'cx-cep') { const d = cpfDig(e.target.value).slice(0, 8); e.target.value = d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d; } });
+document.addEventListener('keydown', e => { if (e.target.id === 'cx-msg' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('[data-act="cx-enviar"]').click(); } });
+
+const cxCss = document.createElement('style');
+cxCss.textContent = `
+.cx-inbox{display:grid;grid-template-columns:minmax(280px,340px) minmax(0,1fr) minmax(240px,300px);height:calc(100vh - 300px);min-height:520px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.cx-lista{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.cx-lh{display:grid;gap:8px;padding:10px;border-bottom:1px solid var(--line)}
+.cx-filas{width:100%}.cx-filas button{flex:1;height:30px;font-size:11.5px;padding:0 4px;white-space:nowrap}.cx-filas b{font-weight:600;margin-left:2px}
+.cx-lh .search{max-width:none;width:100%}
+.cx-canais{display:flex;gap:4px;flex-wrap:wrap}
+.cx-canais button{display:inline-flex;gap:4px;align-items:center;height:26px;padding:0 8px;border:1px solid var(--line);border-radius:13px;background:var(--surface);color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
+.cx-canais button.on{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.cx-itens{overflow:auto;flex:1}
+.cx-item{display:grid;grid-template-columns:40px minmax(0,1fr) auto;grid-template-rows:auto auto auto;column-gap:10px;row-gap:1px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:10px;cursor:pointer;font:inherit;color:inherit}
+.cx-item:hover{background:var(--surface-2)}.cx-item.on{background:var(--accent-soft)}
+.cx-item .cx-av{grid-row:1/4}
+.cx-n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cx-t{font-size:11.5px;color:var(--muted)}
+.cx-pv{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cx-unr{min-width:18px;height:18px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 5px}
+.cx-mt{grid-column:2/4;display:flex;gap:8px;align-items:center;font-size:11.5px}
+.cx-av{position:relative;width:36px;height:36px;border-radius:50%;background:var(--surface-2);color:var(--fg);display:grid;place-items:center;font-weight:600;font-size:12.5px;flex:none}
+.cx-av.lg{width:52px;height:52px;font-size:16px}
+.cx-av .cx-ic{position:absolute;right:-3px;bottom:-3px;background:var(--surface);border-radius:50%;padding:1.5px;box-shadow:0 0 0 1px var(--line)}
+.cx-ic{color:var(--accent);vertical-align:-3px;flex:none}
+.cx-loc{font-size:11.5px;border-radius:9px;padding:0 7px;line-height:18px;white-space:nowrap}
+.cx-loc.mun{background:var(--ok-soft);color:var(--ok)}.cx-loc.uf{background:var(--info-soft);color:var(--info)}.cx-loc.nada{background:var(--warn-soft);color:var(--warn)}
+.cx-vazio{padding:20px 14px}
+.cx-conv{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--bg)}
+.cx-sem{margin:auto;display:grid;gap:4px;text-align:center;color:var(--muted);max-width:34ch;padding:20px}.cx-sem b{color:var(--fg)}
+.cx-ch{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+.cx-volta{display:none}
+.cx-quem{display:grid;min-width:0;flex:1}.cx-quem .note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cx-ass{font-size:12.5px;font-weight:600;color:var(--fg)}
+.cx-acoes{display:flex;gap:6px;align-items:center}.cx-acoes .fsel{height:30px;font-size:12.5px;max-width:170px}
+.cx-msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:6px}
+.cx-dia{align-self:center;font-size:11px;color:var(--muted);background:var(--surface-2);border-radius:9px;padding:1px 9px;margin:6px 0}
+.cx-sys{align-self:center;font-size:11.5px;color:var(--muted);text-align:center}
+.cx-bal{align-self:flex-start;max-width:min(560px,82%);background:var(--surface);border:1px solid var(--line);border-radius:10px 10px 10px 3px;padding:7px 10px 5px;display:grid;gap:2px}
+.cx-bal.out{align-self:flex-end;background:var(--accent-soft);border-color:transparent;border-radius:10px 10px 3px 10px}
+.cx-bal.mail{border-radius:var(--r);max-width:min(640px,92%)}
+.cx-bal.nota{background:var(--warn-soft)}.cx-bal.nota .by{color:var(--warn)}
+.cx-bal .by{font-size:11px;font-weight:600;color:var(--accent)}
+.cx-bal .tx{white-space:pre-wrap;overflow-wrap:anywhere}
+.cx-bal .tm{font-size:10.5px;color:var(--muted);justify-self:end}
+.cx-story{font-size:12.5px;color:var(--muted);font-style:italic}
+.cx-barra{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);background:var(--surface)}
+.cx-comp{display:grid;gap:6px;padding:10px 14px;border-top:1px solid var(--line);background:var(--surface)}
+.cx-rap{display:flex;gap:6px;flex-wrap:wrap}.cx-rap button{border:1px solid var(--line);background:var(--surface-2);border-radius:13px;font:inherit;font-size:12px;padding:3px 10px;cursor:pointer;color:var(--fg)}
+.cx-esc{display:flex;gap:8px;align-items:flex-end}.cx-esc textarea{flex:1;min-width:0;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);padding:8px 10px;resize:vertical;min-height:44px;font:inherit}
+.cx-nota{font-size:12px}
+.cx-lado{border-left:1px solid var(--line);overflow:auto;min-width:0}
+.cx-lb{display:grid;gap:16px;padding:14px}
+.cx-lhd{display:grid;justify-items:center;gap:4px;text-align:center}
+.cx-lb dl.kv{grid-template-columns:76px minmax(0,1fr);font-size:12.5px}
+.cx-locst{display:grid;gap:2px;font-weight:600;padding:8px 10px;border-radius:var(--r)}
+.cx-locst.mun{background:var(--ok-soft)}.cx-locst.uf{background:var(--info-soft)}.cx-locst.nada{background:var(--warn-soft)}
+.cx-locf{display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:8px;margin:8px 0}.cx-locf .cx-mun{grid-column:1/-1}
+.cx-locf input,.cx-locf select{min-height:32px!important;padding:4px 8px!important}
+@media (max-width:1180px){.cx-inbox{grid-template-columns:minmax(240px,300px) minmax(0,1fr)}.cx-lado{display:none}}
+@media (max-width:760px){.cx-inbox{grid-template-columns:minmax(0,1fr);height:calc(100vh - 250px)}.cx-inbox.tem-sel .cx-lista{display:none}.cx-inbox:not(.tem-sel) .cx-conv{display:none}.cx-volta{display:grid}}
+`;
+document.head.appendChild(cxCss);
+render();
+</script>
+<script>
 /* v9: entrada suave ao trocar de página (Minimalista e Suave) */
 let entraT = null;
 function entrar() { document.body.classList.add('entrando'); clearTimeout(entraT); entraT = setTimeout(() => document.body.classList.remove('entrando'), 1300); }
