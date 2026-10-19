@@ -1681,7 +1681,8 @@ function openContato(id) {
   const c = byId('contatos', id); if (!c) return;
   const items = [
     ...D.demandas.filter(d => d.solicitante === id).map(d => ({ d: d.abertura, k: 'Demanda', t: `${d.protocolo} · ${d.titulo}`, s: d.status, type: 'demanda', id: d.id })),
-    ...D.visitas.filter(v => v.contato === id).map(v => ({ d: v.data, k: 'Visita', t: v.motivo, s: '', type: 'visita', id: v.id })),
+    ...D.visitas.filter(v => v.contato === id).map(v => ({ d: v.data, k: v.checkin ? `Visita · ${v.protocolo}` : 'Visita', t: v.resumo ? `${v.motivo}: ${v.resumo.length > 90 ? v.resumo.slice(0, 90).trim() + '…' : v.resumo}` : v.motivo, s: '', type: 'visita', id: v.id })),
+    ...D.visitas.filter(v => v.contato === id && v.waEm).map(v => ({ d: v.waEm.slice(0, 10), k: 'WhatsApp enviado', t: 'Agradecimento pela visita', s: '', type: 'visita', id: v.id })),
     ...D.ligacoes.filter(l => l.contato === id).map(l => ({ d: l.data, k: 'Ligação ' + l.direcao.toLowerCase(), t: l.assunto, s: '', type: 'ligacao', id: l.id })),
     ...D.eventos.filter(e => (e.participantes || []).includes(id)).map(e => ({ d: e.inicio.slice(0, 10), k: 'Compromisso', t: e.titulo, s: '', type: 'evento', id: e.id }))
   ].sort((a, b) => a.d < b.d ? 1 : -1);
@@ -2166,6 +2167,13 @@ function vAutomacoes() {
         <div class="fld"><span class="lbl">Eventos enviados</span><div class="checks">${EVS.map(([k, l]) => `<label><input type="checkbox" name="au-ev" value="${k}" ${a.hook.eventos.includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
         <div style="display:flex;gap:8px"><button type="button" class="btn primary" data-act="auto-save" data-k="hook">Salvar</button><button type="button" class="btn" data-act="hook-test">Enviar evento de teste</button></div>
       </div></section>
+    ${a.visita ? `<section class="panel"><div class="panel-h"><h2>Agradecimento pela visita</h2><label class="switch"><input type="checkbox" id="au-vis-on" ${a.visita.ativo ? 'checked' : ''}>${a.visita.ativo ? 'Ligado' : 'Desligado'}</label></div>
+      <div class="panel-b cfg">
+        <p class="note">Enviada quando a recepção conclui um atendimento, só para quem autorizou contato no check-in. Use {nome}, {atendente} e {protocolo}.</p>
+        <div class="fgrid"><div class="fld"><label for="au-vis-canal">Canal</label><select id="au-vis-canal">${canais(a.visita.canal)}</select></div></div>
+        <div class="fld"><label for="au-vis-msg">Mensagem</label><textarea id="au-vis-msg">${esc(a.visita.msg)}</textarea><span class="hint">Prévia: ${esc(a.visita.msg.replace(/\{nome\}/g, first(ex.nome)).replace(/\{atendente\}/g, 'Renata').replace(/\{protocolo\}/g, `RV-${TODAY.getFullYear()}-0001`))}</span></div>
+        <div><button type="button" class="btn primary" data-act="auto-save" data-k="visita">Salvar</button></div>
+      </div></section>` : ''}
   </div></div>`;
 }
 function vCanais() {
@@ -2502,6 +2510,7 @@ document.addEventListener('click', e => {
       const A = D.auto;
       if (k === 'aniv') Object.assign(A.aniv, { ativo: $('#au-aniv-on').checked, hora: $('#au-aniv-hora').value, canal: +$('#au-aniv-canal').value, msg: $('#au-aniv-msg').value.trim() });
       if (k === 'ia') Object.assign(A.ia, { ativo: $('#au-ia-on').checked, canal: +$('#au-ia-canal').value, inicio: $('#au-ia-ini').value, fim: $('#au-ia-fim').value, instrucoes: $('#au-ia-inst').value.trim(), fora: $('#au-ia-fora').value.trim() });
+      if (k === 'visita') Object.assign(A.visita, { ativo: $('#au-vis-on').checked, canal: +$('#au-vis-canal').value, msg: $('#au-vis-msg').value.trim() });
       if (k === 'hook') {
         const url = $('#au-hook-url').value.trim();
         if (url && !/^https:\/\//.test(url)) { toast('Use um endereço que comece com https://'); return; }
@@ -3430,6 +3439,480 @@ REL.emendas = { l: 'Emendas do mandato', rows: () => emdLista(meuSq()), cols: { 
 const emdCss = document.createElement('style');
 emdCss.textContent = '.emd-bars .bars li{grid-template-columns:minmax(0,170px) minmax(0,1fr) 84px}.emd-bars .bars .bv{white-space:nowrap;text-align:right}@media (max-width:640px){.emd-bars .bars li{grid-template-columns:minmax(0,110px) minmax(0,1fr) 76px}.emd-ms .v{font-size:16px!important;letter-spacing:0!important}}.emd-wrap>*{min-width:0}.emd-wrap .tabs{overflow-x:auto;scrollbar-width:none}.emd-wrap .tabs button{flex:none}';
 document.head.appendChild(emdCss);
+render();
+</script>
+<script>
+/* =====================================================================
+   v11: recepção — check-in por QR code, fila de espera, atendimento,
+   registro da visita em PDF e agradecimento pelo WhatsApp
+   ===================================================================== */
+const CK_COLS = ['Chegou', 'Na fila', 'Em atendimento', 'Atendido'];
+Object.assign(CLS, { 'Chegou': 'warn', 'Na fila': 'info', 'Em atendimento': 'accent', 'Atendido': 'ok', 'Saiu sem atendimento': '' });
+const CK_URL = 'https://deniogatha.github.io/gestao-de-mandato/#checkin';
+const ckUrl = () => /github\.io$/.test(location.hostname) ? location.href.split('#')[0] + '#checkin' : CK_URL;
+const RECEPCIONISTA = 2;
+const MSG_VISITA = 'Olá, {nome}! Agradecemos a sua visita ao gabinete hoje. O registro do seu atendimento com {atendente} tem o número {protocolo}. Se precisar, é só responder por aqui. Gabinete da vereadora Marta Lacerda.';
+const hoje = () => iso(new Date());
+const agora = () => { const d = new Date(); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const minEntre = (a, b) => a && b ? Math.max(0, Math.round((new Date(b) - new Date(a)) / 6e4)) : 0;
+const fMin = m => m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)}`;
+const soDig = s => { let d = String(s || '').replace(/\D/g, ''); if (d.length > 11 && d.startsWith('55')) d = d.slice(2); return d; };
+const fTel = d => d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d;
+const waLink = (tel, txt) => `https://wa.me/55${soDig(tel)}?text=${encodeURIComponent(txt)}`;
+const msgVisita = v => (D.auto.visita ? D.auto.visita.msg : MSG_VISITA).replace(/\{nome\}/g, first(cName(v.contato))).replace(/\{atendente\}/g, first(mName(v.atendente))).replace(/\{protocolo\}/g, v.protocolo);
+const visitasDe = cid => D.visitas.filter(v => v.contato === cid).length;
+// quem costuma atender cada assunto (a recepção pode trocar)
+const SUGERE = { 'Pedido de providência': 5, 'Orientação jurídica': 4, 'Convite para evento': 1, 'Reunião política': 1, 'Busca por emprego': 2, 'Agradecimento': 2 };
+
+/* ---------- dados ---------- */
+function seedRecepcao(ext) {
+  const now = new Date(), t = m => { const d = new Date(now.getTime() - m * 6e4); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  if (!ext.pastas.some(p => p.nome === 'Registros de visita')) ext.pastas.push({ id: ext.pastas.reduce((m, p) => Math.max(m, p.id), 0) + 1, nome: 'Registros de visita' });
+  const pasta = ext.pastas.find(p => p.nome === 'Registros de visita').id;
+  if (!ext.auto.visita) ext.auto.visita = { ativo: true, canal: 1, msg: MSG_VISITA };
+  const novo = { id: nextId('contatos'), nome: 'Josiane Ferraz Lopes', telefone: '(15) 90000-0147', email: '', nascimento: '', bairro: 'Conjunto Esperança', categoria: 'Eleitor', origem: 'Visita ao gabinete', indicadoPor: null, etiquetas: [], criadoEm: iso(now), obs: 'Cadastrada no check-in da recepção.', lgpd: t(4) };
+  D.contatos.push(novo);
+  // [contato, motivo, relato, status, atendente, chegada, fila, início, fim, resumo, encaminhamento, demanda?, whatsapp?]
+  const L = [
+    [24, 'Pedido de providência', 'Buraco grande na rua Antônio Prado, em frente à escola. Já liguei na prefeitura duas vezes.', 'Atendido', 5, 168, 163, 150, 132, 'Morador relatou cratera na rua Antônio Prado, em frente à escola municipal, com risco para alunos e motos. Mostrou fotos e protocolos anteriores na prefeitura (sem retorno).', 'Aberta demanda para a Secretaria de Obras com as fotos anexadas. Caio fará vistoria na quinta e dará retorno ao morador.', ['Tapa-buraco na rua Antônio Prado, em frente à escola', 'Infraestrutura', 'Secretaria de Obras'], 1],
+    [61, 'Orientação jurídica', 'Preciso de orientação sobre a regularização do terreno da minha mãe.', 'Atendido', 4, 131, 126, 118, 97, 'Visitante herdou terreno sem escritura no bairro. Explicado o programa municipal de regularização fundiária e os documentos exigidos.', 'Entregue lista de documentos. Agendado retorno com a Defensoria em 15 dias; Lívia acompanha.', null, 1],
+    [88, 'Agradecimento', 'Vim agradecer pela reforma da praça do bairro.', 'Atendido', 1, 92, 90, 84, 76, 'Liderança agradeceu a reforma da praça e convidou o mandato para a reinauguração com a associação de moradores.', 'Convite repassado à agenda. Diego vai cobrir o evento para as redes.', null, 0],
+    [37, 'Pedido de providência', 'Minha mãe espera consulta com cardiologista desde março.', 'Em atendimento', 1, 41, 37, 19],
+    [120, 'Convite para evento', 'Quero convidar a vereadora para a festa da associação no dia 8.', 'Na fila', 5, 26, 22],
+    [52, 'Busca por emprego', 'Procuro vaga de auxiliar administrativo, trouxe currículo.', 'Na fila', 2, 13, 10],
+    [novo.id, 'Pedido de providência', 'A creche do Conjunto Esperança não tem vaga para meu filho de 2 anos.', 'Chegou', null, 4, null, null, null, null, null, null, 0, true],
+    [14, 'Reunião política', '', 'Chegou', null, 1]
+  ];
+  const checkins = [];
+  L.forEach(([cid0, motivo, relato, status, at, ch, fi, ini, fim, resumo, enc, dem, wa, nv], i) => {
+    const c = byId('contatos', cid0) || D.contatos[i * 7], cid = c.id;
+    const k = { id: i + 1, senha: i + 1, data: iso(now), chegada: t(ch), contato: cid, nome: c.nome, telefone: c.telefone, bairro: c.bairro, motivo, relato, lgpd: true, novo: !!nv, status, atendente: at, filaEm: fi != null ? t(fi) : null, inicio: ini != null ? t(ini) : null, fim: fim != null ? t(fim) : null, visita: null, recebidoPor: RECEPCIONISTA };
+    if (status === 'Atendido') {
+      const v = { id: nextId('visitas'), data: iso(now), contato: cid, motivo, atendente: at, encaminhamento: enc, resumo, checkin: k.id, demanda: null, pdfEm: k.fim, waEm: null };
+      v.protocolo = `RV-${now.getFullYear()}-${pad(v.id).padStart(4, '0')}`;
+      if (dem) {
+        const d = { ...SCHEMA.demanda.def(), titulo: dem[0], categoria: dem[1], orgao: dem[2], solicitante: cid, bairro: BN.includes(c.bairro) ? c.bairro : 'Centro', responsavel: at, descricao: resumo, id: nextId('demandas') };
+        SCHEMA.demanda.create(d); D.demandas.push(d); v.demanda = d.id;
+      }
+      if (wa) v.waEm = t(fim - 1);
+      D.visitas.push(v); k.visita = v.id;
+      ext.arquivos.push({ id: ext.arquivos.reduce((m, a) => Math.max(m, a.id), 0) + 1, nome: `${v.protocolo} ${c.nome}.pdf`, pasta, modulo: 'Visitas', tamanho: 46000 + i * 1300, data: iso(now) });
+    }
+    checkins.push(k);
+  });
+  return checkins;
+}
+{ // dados já salvos no navegador e "Restaurar dados de exemplo"
+  const _seedExtra = seedExtra;
+  seedExtra = function () { const x = _seedExtra(); x.checkins = seedRecepcao(x); return x; };
+  window.seedExtra = seedExtra;
+  if (!D.checkins) { D.checkins = seedRecepcao(D); save(); }
+  if (!D.auto.visita) { D.auto.visita = { ativo: true, canal: 1, msg: MSG_VISITA }; save(); }
+}
+SCHEMA.visita.fields.splice(4, 0, { k: 'resumo', l: 'O que foi discutido', t: 'textarea', w: 1 });
+REL.visitas.cols.resumo = ['O que foi discutido', x => x.resumo || ''];
+
+/* ---------- bibliotecas sob demanda (PDF e QR) ---------- */
+const libs = {};
+const lib = (src, glob) => libs[src] || (libs[src] = new Promise((ok, no) => {
+  if (window[glob]) return ok(window[glob]);
+  const s = document.createElement('script'); s.src = src;
+  s.onload = () => ok(window[glob]); s.onerror = () => { delete libs[src]; s.remove(); no(new Error('lib')); };
+  document.head.appendChild(s);
+}));
+const jsPDFLib = () => lib('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'jspdf').then(m => m.jsPDF);
+const qrLib = () => lib('https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js', 'qrcode');
+async function baixar(nome, blob, okMsg) {
+  const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
+  if (dl) {
+    try { await dl.save({ filename: nome, data: blob }); toast(okMsg); }
+    catch (e) { if (e && e.code !== 'declined') toast('Não foi possível salvar o arquivo nesta visualização.'); }
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); toast(okMsg);
+}
+
+/* ---------- registro da visita em PDF ---------- */
+const pdfTxt = s => String(s ?? '').replace(/[—–]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/…/g, '...');
+async function pdfVisita(vid) {
+  const v = byId('visitas', vid), k = D.checkins.find(x => x.id === v.checkin) || {}, c = byId('contatos', v.contato) || {};
+  let jsPDF; try { jsPDF = await jsPDFLib(); } catch (e) { toast('Sem conexão para gerar o PDF. Tente de novo em instantes.'); return; }
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' }), W = 210, M = 20, CW = W - 2 * M;
+  const ACC = [22, 87, 63], INK = [23, 33, 28], MUT = [86, 101, 94], LIN = [215, 221, 218];
+  let y = 0;
+  const col = rgb => doc.setTextColor(...rgb);
+  const page = () => { doc.addPage(); y = 22; };
+  const need = h => { if (y + h > 297 - 24) page(); };
+  const head = t => { need(16); y += 4; doc.setFont('helvetica', 'bold'); doc.setFontSize(8); col(ACC); doc.text(pdfTxt(t).toUpperCase(), M, y, { charSpace: .4 }); y += 2; doc.setDrawColor(...LIN); doc.setLineWidth(.2); doc.line(M, y, W - M, y); y += 6; };
+  const para = (t, o = {}) => {
+    doc.setFont('helvetica', o.it ? 'italic' : 'normal'); doc.setFontSize(o.size || 10.5); col(o.c || INK);
+    doc.splitTextToSize(pdfTxt(t), CW).forEach(l => { need(6); doc.text(l, M, y); y += 5.2; }); y += 1.5;
+  };
+  const kv = rows => { // duas colunas de rótulo e valor
+    const cw = CW / 2;
+    for (let i = 0; i < rows.length; i += 2) {
+      need(12); let h = 0;
+      rows.slice(i, i + 2).forEach(([l, val], j) => {
+        const x = M + j * cw;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); col(MUT); doc.text(pdfTxt(l), x, y);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); col(INK);
+        const ls = doc.splitTextToSize(pdfTxt(val || '-'), cw - 6); doc.text(ls, x, y + 5); h = Math.max(h, 5 + ls.length * 4.8);
+      });
+      y += h + 4;
+    }
+  };
+  // cabeçalho
+  doc.setFillColor(...ACC); doc.rect(M, 16, 9, 9, 'F');
+  doc.setFillColor(255, 255, 255); doc.triangle(M + 1.8, 19.6, M + 4.5, 17.8, M + 7.2, 19.6, 'F');
+  [2.4, 4.1, 5.8].forEach(x => doc.rect(M + x, 20.2, .8, 3.4, 'F'));
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); col(INK); doc.text('Gabinete da Vereadora Marta Lacerda', M + 12, 19.6);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); col(MUT); doc.text(pdfTxt('Câmara Municipal de Campo Sereno · Legislatura 2025-2028'), M + 12, 24.2);
+  doc.setFont('courier', 'bold'); doc.setFontSize(11); col(ACC); doc.text(v.protocolo || `VISITA ${v.id}`, W - M, 19.6, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); col(MUT); doc.text('Registro de visita', W - M, 24.2, { align: 'right' });
+  doc.setDrawColor(...ACC); doc.setLineWidth(.6); doc.line(M, 29, W - M, 29);
+  y = 42; const dv = pd(v.data);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); col(INK); doc.text('Registro de visita ao gabinete', M, y); y += 7;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); col(MUT); doc.text(pdfTxt(`${DIA[dv.getDay()]}, ${dv.getDate()} de ${MES[dv.getMonth()]} de ${dv.getFullYear()}`), M, y); y += 8;
+  const nV = D.visitas.filter(x => x.contato === v.contato && (x.data < v.data || (x.data === v.data && x.id <= v.id))).length;
+  head('Visitante');
+  kv([['Nome', c.nome || k.nome], ['Celular (WhatsApp)', c.telefone || k.telefone], ['Bairro', c.bairro || k.bairro], ['Relação com o gabinete', nV <= 1 ? 'Primeira visita' : `${nV}ª visita · contato desde ${fD(c.criadoEm)}`]]);
+  head('Atendimento');
+  kv([['Senha', k.senha ? pad(k.senha).padStart(3, '0') : '-'], ['Data', fD(v.data)],
+    ['Check-in', k.chegada ? fT(k.chegada) : '-'], ['Início do atendimento', k.inicio ? fT(k.inicio) : '-'],
+    ['Término', k.fim ? fT(k.fim) : '-'], ['Espera / duração', k.inicio ? `${fMin(minEntre(k.chegada, k.inicio))} / ${fMin(minEntre(k.inicio, k.fim))}` : '-'],
+    ['Recebido por', k.recebidoPor ? `${mName(k.recebidoPor)} (recepção)` : '-'], ['Atendido por', `${mName(v.atendente)}${(D.equipe.find(m => m.id === v.atendente) || {}).cargo ? ' · ' + D.equipe.find(m => m.id === v.atendente).cargo : ''}`]]);
+  head('Motivo da visita');
+  para(v.motivo, { size: 11 });
+  if (k.relato) para(`Relato no check-in: "${k.relato}"`, { it: 1, c: MUT, size: 10 });
+  head('O que foi discutido');
+  para(v.resumo || 'Sem anotações.');
+  head('Encaminhamento');
+  para(v.encaminhamento || 'Sem encaminhamento.');
+  if (v.demanda) { const d = byId('demandas', v.demanda); if (d) para(`Demanda aberta: ${d.protocolo} · ${d.titulo} · ${d.orgao} · prazo ${fD(d.prazo)}`, { size: 10 }); }
+  head('Comunicação e consentimento');
+  para(v.waEm ? `Agradecimento enviado pelo WhatsApp em ${fD(v.waEm)} às ${fT(v.waEm)}.` : 'Agradecimento pelo WhatsApp ainda não enviado.', { size: 10 });
+  if (k.lgpd) para(`O visitante autorizou, no check-in das ${fT(k.chegada)}, o registro desta visita e o contato do gabinete pelo WhatsApp (Lei 13.709/2018).`, { size: 10, c: MUT });
+  // rodapé em todas as páginas
+  const n = doc.getNumberOfPages(), ger = new Date();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i); doc.setDrawColor(...LIN); doc.setLineWidth(.2); doc.line(M, 297 - 16, W - M, 297 - 16);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); col(MUT);
+    doc.text(pdfTxt(`Gerado em ${fD(iso(ger))} às ${pad(ger.getHours())}:${pad(ger.getMinutes())} pelo sistema Mandato · dados fictícios de demonstração`), M, 297 - 11);
+    doc.text(`Página ${i} de ${n}`, W - M, 297 - 11, { align: 'right' });
+  }
+  if (!v.pdfEm) { v.pdfEm = agora(); save(); }
+  await baixar(`${v.protocolo} ${c.nome || k.nome}.pdf`, doc.output('blob'), 'Registro da visita salvo em PDF');
+}
+
+/* ---------- cartaz da recepção com o QR code ---------- */
+async function pdfCartaz() {
+  let jsPDF, qrcode; try { [jsPDF, qrcode] = await Promise.all([jsPDFLib(), qrLib()]); } catch (e) { toast('Sem conexão para gerar o cartaz. Tente de novo em instantes.'); return; }
+  const q = qrcode(0, 'M'); q.addData(ckUrl()); q.make();
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' }), W = 210, n = q.getModuleCount(), S = 110, cell = S / n, x0 = (W - S) / 2, y0 = 96;
+  doc.setFillColor(22, 87, 63); doc.rect(0, 0, W, 10, 'F');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(86, 101, 94); doc.text('Gabinete da Vereadora Marta Lacerda', W / 2, 34, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(34); doc.setTextColor(23, 33, 28); doc.text(pdfTxt('Chegou? Faça seu check-in'), W / 2, 56, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(14); doc.setTextColor(86, 101, 94);
+  doc.text(pdfTxt('Aponte a câmera do celular para o código, preencha seus dados'), W / 2, 72, { align: 'center' });
+  doc.text(pdfTxt('e aguarde: chamamos pelo número da sua senha.'), W / 2, 80, { align: 'center' });
+  doc.setFillColor(23, 33, 28);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { // um retângulo por trecho escuro da linha, sem emendas
+    if (!q.isDark(r, c) || (c && q.isDark(r, c - 1))) continue;
+    let e = c; while (e + 1 < n && q.isDark(r, e + 1)) e++;
+    doc.rect(x0 + c * cell, y0 + r * cell, (e - c + 1) * cell, cell + .06, 'F');
+  }
+  doc.setFont('courier', 'normal'); doc.setFontSize(11); doc.setTextColor(86, 101, 94); doc.text(ckUrl(), W / 2, y0 + S + 14, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+  doc.text(pdfTxt('Sem celular? Fale com a recepção, fazemos o check-in por você.'), W / 2, y0 + S + 26, { align: 'center' });
+  doc.setFontSize(8.5); doc.text(pdfTxt('Seus dados são usados só para o atendimento do gabinete (Lei 13.709/2018).'), W / 2, 280, { align: 'center' });
+  await baixar('Cartaz check-in da recepção.pdf', doc.output('blob'), 'Cartaz salvo em PDF');
+}
+async function openQR() {
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Recepção</p><h2>QR code do check-in</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <div class="ck-poster"><span class="ck-pk">Gabinete da Vereadora Marta Lacerda</span><b>Chegou? Faça seu check-in</b><div class="ck-qr" id="ck-qr"><span class="note">Gerando código…</span></div><span class="ck-pk">Aponte a câmera do celular</span></div>
+    <div class="linkline"><code>${esc(ckUrl())}</code><button type="button" class="btn sm" data-act="copy" data-text="${esc(ckUrl())}">Copiar link</button></div>
+    <div class="ph-act"><button type="button" class="btn primary" data-act="ck-cartaz">Baixar cartaz para imprimir (PDF)</button><a class="btn" href="#checkin">Abrir check-in neste aparelho</a></div>
+    <div class="sect"><h3>Como fica na versão final</h3><p class="note" style="max-width:60ch">O visitante lê o código, preenche o formulário no próprio celular e entra na fila desta tela na hora. Neste protótipo não há servidor: o check-in fica salvo no aparelho em que foi feito. Para demonstrar, use “Abrir check-in neste aparelho” ou deixe o formulário aberto em outra aba do mesmo navegador; a fila se atualiza sozinha.</p></div>
+    <div class="sect"><h3>Mensagem de agradecimento</h3><p class="note">${D.auto.visita.ativo ? 'Ligada.' : 'Desligada.'} O texto fica em <a href="#automacoes">Comunicação › Automações</a>.</p></div>
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Fechar</button></div></div>`);
+  try { const qrcode = await qrLib(), q = qrcode(0, 'M'); q.addData(ckUrl()); q.make(); const el = $('#ck-qr'); if (el) el.innerHTML = q.createSvgTag({ cellSize: 5, margin: 0, scalable: true }); }
+  catch (e) { const el = $('#ck-qr'); if (el) el.innerHTML = '<span class="note">Sem conexão para desenhar o código. O link abaixo funciona do mesmo jeito.</span>'; }
+}
+
+/* ---------- fila da recepção ---------- */
+function vRecepcao() {
+  const H = hoje(), K = D.checkins;
+  const abertos = s => sortBy(K.filter(k => k.status === s), k => k.chegada);
+  const atend = sortBy(K.filter(k => k.status === 'Atendido' && (k.fim || '').startsWith(H)), k => k.fim, -1);
+  const comIni = K.filter(k => k.inicio && k.inicio.startsWith(H)), esperaMed = comIni.length ? Math.round(comIni.reduce((s, k) => s + minEntre(k.chegada, k.inicio), 0) / comIni.length) : 0;
+  const now = agora(), quem = (m, k) => `<option value="${m.id}" ${SUGERE[k.motivo] === m.id ? 'selected' : ''}>${esc(m.nome)}</option>`;
+  const cab = k => `<div class="m"><span class="ck-senha">Senha ${pad(k.senha).padStart(3, '0')}</span>${k.novo || !visitasDe(k.contato) ? '<span class="chip s-accent plain">Primeira visita</span>' : `<span class="note">${visitasDe(k.contato)} ${visitasDe(k.contato) === 1 ? 'visita anterior' : 'visitas anteriores'}</span>`}</div>
+    <a class="t" href="#" data-act="open" data-type="contato" data-id="${k.contato}">${esc(k.nome)}</a>
+    <span class="s">${esc(k.motivo)} · ${esc(k.bairro)}</span>${k.relato ? `<p class="ck-relato">${esc(k.relato)}</p>` : ''}`;
+  const esp = (de, txt) => { const m = minEntre(de, now); return `<span class="ck-wait num ${m >= 30 ? 'late' : ''}">${txt} ${fMin(m)}</span>`; };
+  const card = {
+    'Chegou': k => `${cab(k)}<div class="m">${esp(k.chegada, 'chegou há')}<button type="button" class="linkbtn" data-act="ck-saiu" data-id="${k.id}">Saiu</button></div>
+      <div class="ck-act"><select id="ck-at-${k.id}" aria-label="Quem vai atender ${esc(k.nome)}">${D.equipe.map(m => quem(m, k)).join('')}</select><button type="button" class="btn sm primary" data-act="ck-fila" data-id="${k.id}">Pôr na fila</button></div>`,
+    'Na fila': k => { const pos = abertos('Na fila').filter(x => x.atendente === k.atendente).findIndex(x => x.id === k.id) + 1;
+      return `${cab(k)}<div class="m"><span>${pos}º para <b>${esc(first(mName(k.atendente)))}</b></span>${esp(k.chegada, 'espera')}</div>
+      <div class="ck-act"><button type="button" class="btn sm primary" data-act="ck-iniciar" data-id="${k.id}">Iniciar atendimento</button><button type="button" class="linkbtn" data-act="ck-saiu" data-id="${k.id}">Saiu</button></div>`; },
+    'Em atendimento': k => `${cab(k)}<div class="m"><span>com <b>${esc(first(mName(k.atendente)))}</b></span>${esp(k.inicio, 'há')}</div>
+      <div class="ck-act"><button type="button" class="btn sm primary" data-act="ck-concluir" data-id="${k.id}">Concluir e registrar</button></div>`,
+    'Atendido': k => { const v = byId('visitas', k.visita) || {};
+      return `<div class="m"><span class="ck-senha">${esc(v.protocolo || '')}</span><span class="note num">${fT(k.inicio)}–${fT(k.fim)}</span></div>
+      <a class="t" href="#" data-act="open" data-type="visita" data-id="${v.id}">${esc(k.nome)}</a><span class="s">${esc(k.motivo)} · com ${esc(first(mName(k.atendente)))}</span>
+      <div class="ck-act"><button type="button" class="btn sm" data-act="ck-pdf" data-id="${v.id}">PDF</button>${v.waEm ? `<span class="chip s-ok">WhatsApp ${fT(v.waEm)}</span>` : `<button type="button" class="btn sm" data-act="ck-wa-env" data-id="${v.id}">Enviar agradecimento</button>`}</div>`; }
+  };
+  const cols = { 'Chegou': abertos('Chegou'), 'Na fila': abertos('Na fila'), 'Em atendimento': abertos('Em atendimento'), 'Atendido': atend };
+  const titulo = { 'Chegou': 'Check-in feito', 'Na fila': 'Na fila', 'Em atendimento': 'Em atendimento', 'Atendido': 'Atendidos hoje' };
+  const vazio = { 'Chegou': 'Ninguém aguardando a recepção.', 'Na fila': 'Fila vazia.', 'Em atendimento': 'Nenhum atendimento agora.', 'Atendido': 'Nenhum atendimento concluído hoje.' };
+  return `<div class="wrap ck">${head('Recepção', 'Quem fez check-in pelo QR code, a fila de cada pessoa da equipe e o registro de cada atendimento.', `<button type="button" class="btn" data-act="ck-qr">QR code da recepção</button><a class="btn primary" href="#checkin">Fazer check-in</a>`)}
+  <section class="kpis">
+    <div class="kpi"><span class="l">Aguardando a recepção</span><span class="v">${cols['Chegou'].length}</span><span class="d">fizeram check-in</span></div>
+    <div class="kpi"><span class="l">Na fila</span><span class="v">${cols['Na fila'].length}</span><span class="d">${[...new Set(cols['Na fila'].map(k => first(mName(k.atendente))))].join(', ') || 'ninguém esperando'}</span></div>
+    <div class="kpi"><span class="l">Em atendimento</span><span class="v">${cols['Em atendimento'].length}</span><span class="d">agora</span></div>
+    <div class="kpi"><span class="l">Atendidos hoje</span><span class="v">${atend.length}</span><span class="d">espera média de ${fMin(esperaMed)}</span></div>
+  </section>
+  <div class="kanban">${CK_COLS.map(s => `<section class="kcol"><header><span>${titulo[s]}</span><span class="num">${cols[s].length}</span></header><div class="kcards">${cols[s].map(k => `<article class="kcard ck-${s === 'Atendido' ? 'ok' : 'open'}">${card[s](k)}</article>`).join('') || `<p class="note ck-vazio">${vazio[s]}</p>`}</div></section>`).join('')}</div>
+  </div>`;
+}
+
+/* ---------- concluir atendimento ---------- */
+function openConcluir(id) {
+  const k = D.checkins.find(x => x.id === id); if (!k) return;
+  const c = byId('contatos', k.contato) || {}, waOk = k.lgpd && D.auto.visita.ativo;
+  const opts = (a, sel) => a.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${String(v) === String(sel) ? 'selected' : ''}>${esc(l)}</option>`; }).join('');
+  const prev = msgVisita({ contato: k.contato, atendente: k.atendente, protocolo: `RV-${new Date().getFullYear()}-${pad(nextId('visitas')).padStart(4, '0')}` });
+  openDrawer(`<form id="ck-fim" data-id="${id}" novalidate>
+    <div class="dh"><div><p class="eyebrow">Concluir atendimento · senha ${pad(k.senha).padStart(3, '0')}</p><h2>${esc(k.nome)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+    <div class="db">
+      <dl class="kv"><dt>Motivo</dt><dd>${esc(k.motivo)}</dd>${k.relato ? `<dt>Relato no check-in</dt><dd>${esc(k.relato)}</dd>` : ''}<dt>Horários</dt><dd class="num">check-in ${fT(k.chegada)} · início ${fT(k.inicio)} · espera de ${fMin(minEntre(k.chegada, k.inicio))}</dd><dt>Celular</dt><dd class="mono">${esc(c.telefone || k.telefone)}</dd></dl>
+      <div class="fgrid">
+        <div class="fld w2"><label for="ck-atendente">Atendido por</label><select id="ck-atendente">${opts(D.equipe.map(m => [m.id, `${m.nome} · ${m.cargo}`]), k.atendente)}</select></div>
+        <div class="fld w2"><label for="ck-resumo">O que foi discutido *</label><textarea id="ck-resumo" placeholder="Ex.: Relatou falta de vaga na creche; mostrou a inscrição feita em agosto."></textarea></div>
+        <div class="fld w2"><label for="ck-enc">Encaminhamento e próximos passos</label><textarea id="ck-enc" placeholder="Ex.: Ofício à Secretaria de Educação; retorno ao visitante em 10 dias."></textarea></div>
+        <div class="ck-swrow"><label class="switch"><input type="checkbox" id="ck-dem">Abrir uma demanda a partir desta visita</label></div>
+        <div class="fld w2" id="ck-dem-box" hidden><label for="ck-dem-tit">Assunto da demanda</label><input id="ck-dem-tit" value="${esc((k.relato || k.motivo).slice(0, 80))}"></div>
+        <div class="fld" id="ck-dem-cat-f" hidden><label for="ck-dem-cat">Tema</label><select id="ck-dem-cat">${opts(D_CATS)}</select></div>
+        <div class="fld" id="ck-dem-org-f" hidden><label for="ck-dem-org">Órgão</label><select id="ck-dem-org">${opts(ORGAOS)}</select></div>
+        <div class="ck-swrow"><label class="switch"><input type="checkbox" id="ck-wa" ${waOk ? 'checked' : ''} ${k.lgpd ? '' : 'disabled'}>Enviar agradecimento pelo WhatsApp</label>${k.lgpd ? '' : '<span class="hint">O visitante não autorizou contato pelo WhatsApp.</span>'}</div>
+        <div class="fld w2" id="ck-wa-box" ${waOk ? '' : 'hidden'}><label for="ck-wa-msg">Mensagem</label><textarea id="ck-wa-msg">${esc(prev)}</textarea><span class="hint">Sai pelo canal ${esc((byId('canais', D.auto.visita.canal) || {}).nome || '—')}.</span></div>
+      </div>
+      <p class="ferr" id="ck-err" hidden></p>
+    </div>
+    <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Cancelar</button><button class="btn primary" type="submit">Concluir e gerar registro</button></div>
+  </form>`);
+  $('#ck-resumo').focus();
+}
+
+/* ---------- ficha da visita registrada ---------- */
+function openVisitaReg(vid, aviso) {
+  const v = byId('visitas', vid); if (!v) return;
+  const k = D.checkins.find(x => x.id === v.checkin) || {}, c = byId('contatos', v.contato) || {}, d = v.demanda ? byId('demandas', v.demanda) : null;
+  const msg = v.waTexto || msgVisita(v);
+  openDrawer(`<div class="dwrap">
+    <div class="dh"><div><p class="eyebrow">Registro de visita · <span class="mono">${esc(v.protocolo)}</span></p><h2>${esc(c.nome || k.nome)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+    <div class="db">
+      ${aviso ? `<p class="ck-aviso">${aviso}</p>` : ''}
+      <dl class="kv">
+        <dt>Data</dt><dd class="num">${fD(v.data)}${k.chegada ? ` · check-in ${fT(k.chegada)} · atendimento ${fT(k.inicio)}–${fT(k.fim)}` : ''}</dd>
+        ${k.chegada ? `<dt>Espera</dt><dd class="num">${fMin(minEntre(k.chegada, k.inicio))} · duração de ${fMin(minEntre(k.inicio, k.fim))}</dd>` : ''}
+        <dt>Atendido por</dt><dd>${esc(mName(v.atendente))}</dd>
+        <dt>Motivo</dt><dd>${esc(v.motivo)}</dd>
+        ${k.relato ? `<dt>Relato</dt><dd>${esc(k.relato)}</dd>` : ''}
+        <dt>Discutido</dt><dd>${esc(v.resumo || '—')}</dd>
+        <dt>Encaminhamento</dt><dd>${esc(v.encaminhamento || '—')}</dd>
+        <dt>Demanda</dt><dd>${d ? `<a href="#" data-act="open" data-type="demanda" data-id="${d.id}">${esc(d.protocolo)} · ${esc(d.titulo)}</a>` : '—'}</dd>
+        <dt>Contato</dt><dd><a href="#" data-act="open" data-type="contato" data-id="${v.contato}">Ver histórico de ${esc(first(c.nome || k.nome))}</a></dd>
+      </dl>
+      <div class="sect"><h3>Registro em PDF</h3><div class="ck-act"><button type="button" class="btn" data-act="ck-pdf" data-id="${v.id}">Baixar registro (PDF)</button><span class="note">${v.pdfEm ? `Gerado em ${fD(v.pdfEm)} às ${fT(v.pdfEm)} e guardado no Drive, pasta Registros de visita.` : ''}</span></div></div>
+      <div class="sect"><h3>Agradecimento pelo WhatsApp</h3>
+        <p class="ck-msg">${esc(msg)}</p>
+        <div class="ck-act" style="margin-top:8px">${v.waEm ? `<span class="chip s-ok">Enviado em ${fD(v.waEm)} às ${fT(v.waEm)}</span>` : (k.lgpd === false ? '<span class="note">Sem autorização de contato.</span>' : `<button type="button" class="btn primary" data-act="ck-wa-env" data-id="${v.id}">Enviar pelo canal do gabinete</button>`)}
+          <a class="btn ck-wa-link" href="${esc(waLink(c.telefone || k.telefone, msg))}" target="_blank" rel="noopener" data-vid="${v.id}">Abrir no WhatsApp</a></div>
+        <p class="note" style="margin-top:6px">“Abrir no WhatsApp” abre a conversa com o texto pronto para enviar do seu aparelho. Os telefones do exemplo são fictícios.</p></div>
+    </div>
+    <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Fechar</button><button type="button" class="btn" data-act="edit" data-type="visita" data-id="${v.id}">Editar</button></div>
+  </div>`);
+}
+const _openItem11 = openItem;
+openItem = function (type, id) {
+  if (type === 'visita') { const v = byId('visitas', id); if (v && v.checkin) return openVisitaReg(id); }
+  return _openItem11(type, id);
+};
+function enviarAgradecimento(v, txt) {
+  v.waEm = agora(); v.waTexto = txt || msgVisita(v);
+  const cn = byId('canais', D.auto.visita.canal); if (cn) cn.msgsHoje++;
+}
+
+/* ---------- formulário público de check-in (aberto pelo QR code) ---------- */
+function vCheckin() {
+  const st = ui('ck');
+  const marca = `<div class="kiosk-brand">${$('.brand svg').outerHTML}<div><b>Gabinete da Vereadora Marta Lacerda</b><span>Câmara Municipal de Campo Sereno</span></div></div>`;
+  const pe = `<p class="kiosk-foot"><a href="#recepcao">Equipe do gabinete: ver a fila da recepção</a></p>`;
+  if (st.done) {
+    const k = D.checkins.find(x => x.id === st.done);
+    if (k) {
+      const frente = D.checkins.filter(x => (x.status === 'Chegou' || x.status === 'Na fila') && x.chegada < k.chegada).length;
+      return `<div class="kiosk-wrap"><div class="kiosk-card ck-done">${marca}
+        <div><p class="eyebrow">Check-in feito</p><h1>Pronto, ${esc(first(k.nome))}.</h1><p class="sub">Aguarde na recepção. Vamos chamar pelo número da sua senha.</p></div>
+        <div class="ck-ticket"><span>Sua senha</span><b>${pad(k.senha).padStart(3, '0')}</b><span>${frente === 0 ? 'Você é o próximo a ser chamado.' : `${frente} ${frente === 1 ? 'pessoa chegou' : 'pessoas chegaram'} antes de você.`}</span></div>
+        <button type="button" class="btn" data-act="ck-novo">Fazer outro check-in</button>${pe}</div></div>`;
+    }
+  }
+  const v = st.v || {};
+  return `<div class="kiosk-wrap"><form class="kiosk-card" id="ck-form" novalidate>${marca}
+    <div><h1>Faça seu check-in</h1><p class="sub">Leva menos de um minuto. Depois é só aguardar: chamamos pela senha.</p></div>
+    <div class="fgrid">
+      <div class="fld w2"><label for="ckf-nome">Nome completo *</label><input id="ckf-nome" autocomplete="name" value="${esc(v.nome || '')}"></div>
+      <div class="fld w2"><label for="ckf-tel">Celular com WhatsApp *</label><input id="ckf-tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(15) 99999-9999" value="${esc(v.tel || '')}"></div>
+      <div class="fld w2"><label for="ckf-bairro">Bairro *</label><select id="ckf-bairro"><option value="">Selecione</option>${[...BN, 'Outra cidade'].map(b => `<option ${v.bairro === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
+      <div class="fld w2"><label for="ckf-motivo">Assunto *</label><select id="ckf-motivo"><option value="">Selecione</option>${V_MOTIVOS.map(m => `<option ${v.motivo === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></div>
+      <div class="fld w2"><label for="ckf-relato">Conte em poucas palavras (opcional)</label><textarea id="ckf-relato" rows="3" placeholder="Ex.: falta de vaga na creche para meu filho">${esc(v.relato || '')}</textarea></div>
+      <label class="ck-consent w2" for="ckf-lgpd"><input type="checkbox" id="ckf-lgpd" ${v.lgpd ? 'checked' : ''}><span>Autorizo o gabinete a registrar esta visita e a falar comigo pelo WhatsApp sobre o meu atendimento. *</span></label>
+    </div>
+    <p class="ferr" id="ckf-err" hidden></p>
+    <button class="btn primary ck-go" type="submit">Fazer check-in</button>${pe}
+  </form></div>`;
+}
+
+/* ---------- rotas, navegação e casca do modo quiosque ---------- */
+Object.assign(ROUTES, {
+  recepcao: { t: 'Recepção', g: 'Atendimento', r: vRecepcao, n: () => D.checkins.filter(k => k.status === 'Chegou' || k.status === 'Na fila').length || '' },
+  checkin: { t: 'Check-in', g: 'Atendimento', r: vCheckin, hide: true }
+});
+{ const A = AREAS.find(a => a.k === 'atend'); if (!A.p.includes('recepcao')) A.p.splice(1, 0, 'recepcao'); }
+PAGE_DESC.recepcao = 'Check-in por QR code e fila de atendimento';
+const _render11 = render;
+render = function () {
+  const k = cur() === 'checkin';
+  document.body.classList.toggle('kiosk', k);
+  if (k) document.title = 'Check-in · Gabinete';
+  _render11();
+  if (k) document.title = 'Check-in · Gabinete';
+};
+
+/* ---------- ações ---------- */
+document.addEventListener('click', e => {
+  const wl = e.target.closest('.ck-wa-link');
+  if (wl) { const v = byId('visitas', +wl.dataset.vid); if (v && !v.waEm) { enviarAgradecimento(v); save(); render(); setTimeout(() => openVisitaReg(v.id), 0); } return; }
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  const id = +a.dataset.id || 0, k = D.checkins.find(x => x.id === id);
+  switch (a.dataset.act) {
+    case 'ck-qr': openQR(); break;
+    case 'ck-cartaz': pdfCartaz(); break;
+    case 'ck-fila': k.atendente = +$(`#ck-at-${id}`).value; k.status = 'Na fila'; k.filaEm = agora(); save(); toast(`${first(k.nome)} na fila de ${first(mName(k.atendente))}`); render(); break;
+    case 'ck-iniciar': k.status = 'Em atendimento'; k.inicio = agora(); save(); toast(`Atendimento de ${first(k.nome)} iniciado`); render(); break;
+    case 'ck-saiu': k.status = 'Saiu sem atendimento'; k.fim = agora(); save(); toast(`${first(k.nome)} saiu sem atendimento`); render(); break;
+    case 'ck-concluir': openConcluir(id); break;
+    case 'ck-pdf': pdfVisita(id); break;
+    case 'ck-wa-env': { const v = byId('visitas', id); enviarAgradecimento(v); save(); toast(`Agradecimento enviado para ${first(cName(v.contato))}`); render(); if (!$('#drawer').hidden) openVisitaReg(v.id); break; }
+    case 'ck-novo': ui('ck').done = 0; ui('ck').v = {}; render(); break;
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'ck-dem') ['ck-dem-box', 'ck-dem-cat-f', 'ck-dem-org-f'].forEach(i => $('#' + i).hidden = !t.checked);
+  else if (t.id === 'ck-wa') $('#ck-wa-box').hidden = !t.checked;
+});
+document.addEventListener('submit', e => {
+  const f = e.target;
+  if (f.id === 'ck-form') {
+    e.preventDefault();
+    const nome = $('#ckf-nome').value.trim().replace(/\s+/g, ' '), tel = soDig($('#ckf-tel').value), bairro = $('#ckf-bairro').value, motivo = $('#ckf-motivo').value, relato = $('#ckf-relato').value.trim(), lgpd = $('#ckf-lgpd').checked;
+    ui('ck').v = { nome, tel: $('#ckf-tel').value, bairro, motivo, relato, lgpd };
+    const err = !nome || nome.split(' ').length < 2 ? 'Escreva seu nome e sobrenome.' : tel.length < 10 || tel.length > 11 ? 'Confira o celular: DDD e número, por exemplo (15) 99999-9999.' : !bairro ? 'Escolha o seu bairro.' : !motivo ? 'Escolha o assunto da visita.' : !lgpd ? 'Para fazer o check-in, marque a autorização no fim do formulário.' : '';
+    if (err) { const p = $('#ckf-err'); p.textContent = err; p.hidden = false; return; }
+    let c = D.contatos.find(x => soDig(x.telefone) === tel), novo = false;
+    if (!c) {
+      c = { id: nextId('contatos'), nome, telefone: fTel(tel), email: '', nascimento: '', bairro, categoria: 'Eleitor', origem: 'Visita ao gabinete', indicadoPor: null, etiquetas: [], criadoEm: hoje(), obs: 'Cadastrado no check-in da recepção.' };
+      D.contatos.push(c); novo = true;
+    }
+    c.lgpd = agora();
+    const H = hoje(), k = { id: nextId('checkins'), senha: D.checkins.filter(x => x.data === H).length + 1, data: H, chegada: agora(), contato: c.id, nome: c.nome, telefone: c.telefone, bairro: c.bairro, motivo, relato, lgpd, novo: novo || !visitasDe(c.id), status: 'Chegou', atendente: null, filaEm: null, inicio: null, fim: null, visita: null, recebidoPor: RECEPCIONISTA };
+    D.checkins.push(k); save();
+    Object.assign(ui('ck'), { done: k.id, v: {} }); render();
+    clearTimeout(window.ckT); window.ckT = setTimeout(() => { if (cur() === 'checkin' && ui('ck').done === k.id) { ui('ck').done = 0; render(); } }, 25000);
+  }
+  else if (f.id === 'ck-fim') {
+    e.preventDefault();
+    const k = D.checkins.find(x => x.id === +f.dataset.id), resumo = $('#ck-resumo').value.trim();
+    if (!resumo) { const p = $('#ck-err'); p.textContent = 'Anote o que foi discutido para gerar o registro.'; p.hidden = false; $('#ck-resumo').focus(); return; }
+    k.atendente = +$('#ck-atendente').value; k.status = 'Atendido'; k.fim = agora();
+    const v = { id: nextId('visitas'), data: hoje(), contato: k.contato, motivo: k.motivo, atendente: k.atendente, encaminhamento: $('#ck-enc').value.trim(), resumo, checkin: k.id, demanda: null, pdfEm: agora(), waEm: null };
+    v.protocolo = `RV-${new Date().getFullYear()}-${pad(v.id).padStart(4, '0')}`;
+    const c = byId('contatos', k.contato) || {};
+    if ($('#ck-dem').checked) {
+      const S = SCHEMA.demanda, d = { ...S.def(), titulo: $('#ck-dem-tit').value.trim() || k.motivo, categoria: $('#ck-dem-cat').value, orgao: $('#ck-dem-org').value, solicitante: k.contato, bairro: BN.includes(c.bairro) ? c.bairro : 'Centro', responsavel: k.atendente, descricao: resumo, id: nextId('demandas') };
+      S.create(d); D.demandas.push(d); v.demanda = d.id;
+    }
+    D.visitas.push(v); k.visita = v.id;
+    if ($('#ck-wa').checked) enviarAgradecimento(v, $('#ck-wa-msg').value.trim().replace(/RV-\d{4}-\d{4}/g, v.protocolo));
+    const pasta = (D.pastas.find(p => p.nome === 'Registros de visita') || {}).id || 0;
+    D.arquivos.push({ id: nextId('arquivos'), nome: `${v.protocolo} ${c.nome || k.nome}.pdf`, pasta, modulo: 'Visitas', tamanho: 48000, data: hoje() });
+    save(); render();
+    const dm = v.demanda ? byId('demandas', v.demanda) : null;
+    openVisitaReg(v.id, `Atendimento concluído. Registro ${esc(v.protocolo)} gerado${dm ? `, demanda ${esc(dm.protocolo)} aberta` : ''}${v.waEm ? ' e agradecimento enviado pelo WhatsApp' : ''}.`);
+  }
+});
+window.addEventListener('hashchange', () => { if (['checkin', 'automacoes'].includes(cur()) && !$('#drawer').hidden) closeDrawer(); });
+// fila e formulário abertos em abas diferentes do mesmo navegador
+window.addEventListener('storage', e => { if (e.key === KEY && e.newValue) { try { D = JSON.parse(e.newValue); if ($('#drawer').hidden) render(); else renderNav(); } catch (err) {} } });
+setInterval(() => { if (cur() === 'recepcao' && $('#drawer').hidden && !(document.activeElement && document.activeElement.matches('select,input,textarea'))) render(); }, 30000);
+
+const ckCss = document.createElement('style');
+ckCss.textContent = `
+.ck .kcard{cursor:default;gap:7px}
+.ck .kcard .t{text-decoration:none;color:var(--fg);font-weight:600}
+.ck .kcard a.t:hover{color:var(--accent);text-decoration:underline}
+.ck .kcard .s{font-size:12px;color:var(--muted)}
+.ck .kcard.ck-ok{background:transparent}
+.ck-senha{font-family:var(--font-data);font-size:11.5px;font-weight:500;color:var(--muted);letter-spacing:.02em}
+.ck-relato{font-size:12.5px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;border-left:2px solid var(--line);padding-left:8px}
+.ck-wait.late{color:var(--warn);font-weight:600}
+.ck-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ck-act select{height:28px;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);font-size:12.5px;flex:1 1 120px;min-width:0;padding:0 6px}
+.ck-vazio{padding:10px 4px}
+.ck a.btn,.drawer a.btn,.kiosk-card a.btn{text-decoration:none}
+.ck-swrow{grid-column:1/-1;display:grid;gap:5px}
+.ck .kanban{grid-auto-columns:minmax(250px,1fr)}
+.ck-aviso{background:var(--ok-soft);color:var(--ok);padding:10px 12px;border-radius:var(--r);font-weight:500}
+.ck-msg{background:var(--surface-2);padding:10px 12px;border-radius:var(--r);white-space:pre-wrap;max-width:60ch}
+.ck-poster{--paper:#FFFFFF;--ink:#17211C;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:var(--r);padding:22px 18px;display:grid;justify-items:center;gap:10px;text-align:center}
+.ck-poster b{font-size:20px;letter-spacing:-.01em}
+.ck-pk{font-size:12px;color:#56655E}
+.ck-qr{width:200px;max-width:100%;aspect-ratio:1;display:grid;place-items:center}
+.ck-qr svg{width:100%;height:auto;display:block}
+.ck-qr svg path,.ck-qr svg rect[fill="black"]{fill:#17211C}
+body.kiosk .side,body.kiosk .top,body.kiosk #areasbar,body.kiosk #subnav,body.kiosk .navscrim,body.kiosk .msel,body.kiosk .mselpanel,body.kiosk .ddpanel{display:none!important}
+body.kiosk .app{display:block!important;height:100%}
+body.kiosk .main{height:100%}
+body.kiosk #view{padding:0!important;background:var(--bg)}
+.kiosk-wrap{min-height:100%;display:grid;justify-items:center;align-content:start;padding:clamp(20px,6vh,56px) max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.kiosk-card{width:min(480px,100%);display:grid;gap:22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:24px clamp(16px,5vw,32px) 20px}
+.kiosk-brand{display:flex;gap:12px;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.kiosk-brand svg{flex:none}
+.kiosk-brand b{display:block;font-size:14px}
+.kiosk-brand span{font-size:12px;color:var(--muted)}
+.kiosk-card h1{font-size:26px;font-weight:650;letter-spacing:-.02em}
+.kiosk-card .sub{color:var(--muted);margin-top:6px}
+.kiosk-card .fld input,.kiosk-card .fld select,.kiosk-card .fld textarea{min-height:44px;font-size:16px}
+.kiosk-card .fld textarea{min-height:80px}
+.ck-consent{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);cursor:pointer;grid-column:1/-1}
+.ck-consent input{width:20px;height:20px;margin:1px 0 0;flex:none;accent-color:var(--accent)}
+.ck-go{height:48px;justify-content:center;font-size:16px}
+.kiosk-foot{text-align:center;font-size:12px}
+.kiosk-foot a{color:var(--muted)}
+.ck-ticket{display:grid;justify-items:center;gap:4px;padding:22px 12px;border:1px dashed var(--line-strong);border-radius:var(--r);text-align:center}
+.ck-ticket b{font-family:var(--font-data);font-size:76px;line-height:1;font-weight:500;letter-spacing:-.04em;color:var(--accent)}
+.ck-ticket span{color:var(--muted);font-size:13px}
+.ck-done .btn{justify-content:center;height:44px}
+@media (max-width:640px){.kiosk-card{border:0;padding:8px 0 0;background:transparent}.ck .kanban{grid-auto-flow:row;grid-auto-columns:auto}}
+`;
+document.head.appendChild(ckCss);
 render();
 </script>
 <script>

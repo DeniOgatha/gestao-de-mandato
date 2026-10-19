@@ -9,3 +9,5 @@ Dados de contatos, demandas, agenda e as demais telas do gabinete são simulados
 - emendas parlamentares e pagamentos por favorecido (Portal da Transparência, CGU). Pessoas físicas e microempreendedores individuais aparecem somados, sem nome.
 
 As telas eleitorais de exemplo municipal (resultados, comparação, eleitorado e mapa de votos) seguem simuladas.
+
+A recepção com check-in por QR code (Atendimento › Recepção) também é simulada: sem servidor, o check-in fica salvo no navegador em que o formulário foi preenchido. O formulário público abre em `#checkin`.
