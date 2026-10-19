@@ -6071,7 +6071,8 @@ mxCss.textContent = `.leaflet-image-layer,.leaflet-layer,.leaflet-marker-icon,.l
 .mx-cand{display:flex;align-items:center;gap:10px;padding:8px;border-radius:var(--r);cursor:pointer;border:1px solid transparent;width:100%;background:none;text-align:left}
 .mx-cand:hover{background:var(--surface-2)}
 .mx-cand.on{background:var(--accent-soft);border-color:var(--accent)}
-.mx-av{width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;background:var(--party,var(--muted))}
+.mx-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--surface-2)}
+.mx-av{position:relative;overflow:hidden;border:2px solid var(--party,var(--muted));width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;background:var(--party,var(--muted))}
 .mx-av.sg{border-radius:var(--r);font-size:10px;letter-spacing:.02em}
 .mx-cm{flex:1;min-width:0}
 .mx-nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -6193,7 +6194,7 @@ const MX = (function () {
     PA:"Pará", PB:"Paraíba", PE:"Pernambuco", PI:"Piauí", PR:"Paraná", RJ:"Rio de Janeiro", RN:"Rio Grande do Norte",
     RO:"Rondônia", RR:"Roraima", RS:"Rio Grande do Sul", SC:"Santa Catarina", SE:"Sergipe", SP:"São Paulo", TO:"Tocantins" };
   // cargo do filtro -> cargos do TSE (Estadual inclui o Distrital do DF)
-  var CARGO_OPC = [["5", "Senador", [5]], ["6", "Deputado Federal", [6]], ["7", "Deputado Estadual/Distrital", [7, 8]],
+  var CARGO_OPC = [["*", "Todos os cargos", [1, 3, 5, 6, 7, 8]], ["5", "Senador", [5]], ["6", "Deputado Federal", [6]], ["7", "Deputado Estadual/Distrital", [7, 8]],
                    ["3", "Governador", [3]], ["1", "Presidente", [1]]];
   var CARGO_NOME = { 1: "Presidente", 3: "Governador", 5: "Senador", 6: "Dep. Federal", 7: "Dep. Estadual", 8: "Dep. Distrital" };
   var METRICAS = { normal: [["votos", "Votos"], ["pct", "% dos votos válidos"], ["mil", "Votos por mil eleitores"]],
@@ -6324,6 +6325,7 @@ const MX = (function () {
   var cache = {};
   // promessa por arquivo; quando chega, o conteúdo fica também em promessa.__v (acesso síncrono)
   function carregar(caminho) {
+    if (!caminho) { var nada = Promise.resolve(null); nada.__v = null; return nada; }
     if (!cache[caminho]) {
       var p = fetch(BASE + caminho).then(function (r) {
         if (r.status === 404) return null;
@@ -6364,9 +6366,21 @@ const MX = (function () {
 
   function cargosDoFiltro() { for (var i = 0; i < CARGO_OPC.length; i++) if (CARGO_OPC[i][0] === S.cargo) return CARGO_OPC[i][2]; return [5]; }
   function nomeCargoFiltro() { return CARGO_OPC.filter(function (o) { return o[0] === S.cargo; })[0][1]; }
-  // arquivo de candidatos que cobre a UF no cargo do filtro
+  // com "Todos os cargos", o que vale no mapa é o cargo do candidato escolhido
+  function cargoSel() { return cur && cur.c ? cur.c.cargo : null; }
+  function nomeCargoMapa() { return S.cargo === "*" && cargoSel() ? CARGO_NOME[cargoSel()] : nomeCargoFiltro(); }
+  // arquivos de candidatos da lista: os dos cargos do filtro, só da UF quando há UF
+  function arquivosLista(ano) {
+    var cs = cargosDoFiltro();
+    return baseAno(ano).arquivos.filter(function (a) {
+      var p = a.split("-");
+      return cs.indexOf(+p[0].slice(1)) >= 0 && (!S.uf || p[1] === S.uf || p[1] === "BR");
+    }).map(function (a) { return ano + "/" + a + ".json"; });
+  }
+  // arquivo de candidatos que cobre a UF no cargo do filtro (null: nenhum candidato escolhido em "Todos os cargos")
   function arqCands(ano, uf) {
     var cs = cargosDoFiltro();
+    if (S.cargo === "*") { if (!cargoSel()) return null; cs = cargoSel() >= 7 ? [7, 8] : [cargoSel()]; }
     if (cs[0] === 1) return ano + "/c1-BR.json";
     var c = cs.length > 1 ? (uf === "DF" ? 8 : 7) : cs[0];
     return ano + "/c" + c + "-" + uf + ".json";
@@ -6382,7 +6396,7 @@ const MX = (function () {
   }
 
   // ---------- estado (em memória: dura enquanto a página estiver aberta) ----------
-  var S = { modo: "foco", ano: "2026", cargo: "5", uf: "", nivel: "zona", escolas: true, choro: true, calor: false, metrica: "votos", porte: "", min: 0,
+  var S = { modo: "outros", auto: true, ano: "2026", cargo: "*", uf: "", nivel: "zona", escolas: true, choro: true, calor: false, metrica: "votos", porte: "", min: 0,
             busca: "", partido: "*", genero: "", cidade: null, sel: null, mun: null, sort: { k: "valor", d: -1 }, mostrar: LISTA_PASSO };
   var cur = null, gen = 0, iniciado = false, montado = false, reenquadrar = false;
 
@@ -6578,7 +6592,7 @@ const MX = (function () {
       '<div class="mx-grade">' +
         '<aside class="panel mx-lado">' +
           '<div class="mx-modo"><div class="seg" id="mx-fModo" role="group" aria-label="Quais candidatos">' +
-            '<button type="button" data-v="foco">Candidatos do ' + FOCO + '</button><button type="button" data-v="outros">Outros candidatos</button></div></div>' +
+            '<button type="button" data-v="outros">Todos os partidos</button><button type="button" data-v="foco">Só o ' + FOCO + '</button></div></div>' +
           '<div class="panel-h"><h2 id="mx-listTitle">Candidatos do ' + FOCO + '</h2><span class="meta num" id="mx-candCnt"></span></div>' +
           '<div class="mx-busca"><input class="fsel" type="search" id="mx-fBusca" placeholder="Buscar por nome ou número" aria-label="Buscar candidato"></div>' +
           '<div class="mx-lista" id="mx-candList"></div>' +
@@ -6772,7 +6786,7 @@ const MX = (function () {
 
   // ---------- cálculo da seleção ----------
   // sem candidato escolhido, o mapa mostra o partido (o acompanhado; em "Outros", o do filtro)
-  function selPadrao() { return S.modo === "foco" ? { k: "p", sg: FOCO } : (S.partido !== "*" ? { k: "p", sg: S.partido } : null); }
+  function selPadrao() { if (S.cargo === "*") return null; return S.modo === "foco" ? { k: "p", sg: FOCO } : (S.partido !== "*" ? { k: "p", sg: S.partido } : null); }
 
   function calcular() {
     var sel = S.sel || selPadrao(), anoPri = anoLista(), cmp = S.ano === "cmp";
@@ -6782,7 +6796,7 @@ const MX = (function () {
         var a = r[0], b = r[1];
         return { tipo: "p", sg: sel.sg, genero: S.genero,
                  titulo: "Partido " + sel.sg + (S.genero ? " · " + rotuloGenero() : ""),
-                 sub: nomeCargoFiltro() + " · " + (S.cidade != null ? MUN[S.cidade].nome + "/" + S.uf : S.uf ? UF_NOMES[S.uf] : "Brasil") + (S.genero ? " · só candidat" + (S.genero === "F" ? "as" : "os") + ", sem legenda" : " · nominais + legenda"),
+                 sub: nomeCargoMapa() + " · " + (S.cidade != null ? MUN[S.cidade].nome + "/" + S.uf : S.uf ? UF_NOMES[S.uf] : "Brasil") + (S.genero ? " · só candidat" + (S.genero === "F" ? "as" : "os") + ", sem legenda" : " · nominais + legenda"),
                  votos: a ? a.votos : new Float64Array(NU()), total: a ? a.total : 0, leg: a && a.leg, ext: a ? a.ext : 0,
                  v22: b ? b.votos : null, total22: b ? b.total : null, sem22: cmp && !b,
                  cargos: cargosDoFiltro(), cargos22: cargosDoFiltro(), escopoUf: S.uf };
@@ -6843,8 +6857,10 @@ const MX = (function () {
   }
 
   // ---------- desenho ----------
-  function atualizar(reenq) {
+  // semAuto: o próprio usuário mexeu na seleção (pode ter desmarcado de propósito)
+  function atualizar(reenq, semAuto) {
     var g = ++gen;
+    S.auto = !semAuto;
     desenharLista();
     calcular().then(function (sel) {
       if (g !== gen) return;   // outra atualização começou no meio
@@ -6998,7 +7014,13 @@ const MX = (function () {
     if (cur.tipo === "c") return cur.c === c || (cur.c.n === c.n && cur.c.cargo === c.cargo && cur.c.uf === c.uf);
     return cur.tipo === "p" && c.p === cur.sg && (!cur.genero || c.g === cur.genero);
   }
-  function avatar(c) { return '<div class="mx-av" style="--party:' + corPartido(c.p) + ";color:" + tinta(corPartido(c.p)) + '">' + esc(iniciais(c.nm)) + "</div>"; }
+  // foto do TSE (2022: a da candidatura de 2026 ligada, quando há); sem foto, as iniciais
+  function avatar(c) {
+    var cor = corPartido(c.p), sq = c.ano === "2022" ? c.lsq : c.sq;
+    return '<div class="mx-av" style="--party:' + cor + ";color:" + tinta(cor) + '">' + esc(iniciais(c.nm)) +
+      (sq ? '<img loading="lazy" alt="" src="' + BASE + "fotos/" + esc(sq) + '.webp">' : "") + "</div>";
+  }
+  document.addEventListener("error", function (e) { if (e.target.matches && e.target.matches(".mx-av img")) e.target.remove(); }, true);
   // só no nível zona, em cidade com mais de uma zona: de onde veio o desenho
   function origemZona(i) {
     if (!zona() || ZON[i].unica) return "";
@@ -7017,7 +7039,7 @@ const MX = (function () {
     if (S.ano === "cmp") return montarTipCmp(i);
     var u = U(i), anoPri = anoLista();
     var html = '<div class="t-name">' + nomeU(u) + "</div>" +
-      '<div class="t-sub">' + nf.format(aptos(anoPri, i)) + " eleitores · " + esc(nomeCargoFiltro()) + " · " + anoPri +
+      '<div class="t-sub">' + nf.format(aptos(anoPri, i)) + " eleitores · " + esc(nomeCargoMapa()) + " · " + anoPri +
       (origemZona(i) ? "<br>" + esc(origemZona(i)) : "") + "</div>";
     if (!cur.vazio) {
       var v = cur.votos[i], val = validos(anoPri, i, cur.cargos);
@@ -7056,7 +7078,7 @@ const MX = (function () {
     var u = U(i);
     var ap22 = aptos("2022", i), ap26 = aptos("2026", i);
     var html = '<div class="t-name">' + nomeU(u) + "</div>" +
-      '<div class="t-sub">' + nf.format(ap22) + " → " + nf.format(ap26) + " eleitores · " + esc(nomeCargoFiltro()) + " · 2022 × 2026" +
+      '<div class="t-sub">' + nf.format(ap22) + " → " + nf.format(ap26) + " eleitores · " + esc(nomeCargoMapa()) + " · 2022 × 2026" +
       (origemZona(i) ? "<br>" + esc(origemZona(i)) : "") + "</div>";
     var cls = function (x) { return '<b class="' + (x > 0 ? "mx-up" : x < 0 ? "mx-down" : "") + '">'; };
     var dif = function (x, m) { return cls(x) + fmt(x, m) + "</b>"; };
@@ -7443,6 +7465,13 @@ const MX = (function () {
       '<div class="mx-dr"><div class="mx-vt">' + nf.format(total) + "</div>" + dv + "</div></button>";
   }
 
+  // sem candidato nem partido escolhido, o mapa abre no mais votado da lista
+  function autoSel(c) {
+    if (!S.auto || S.sel || selPadrao() || !c) return;
+    S.auto = false;
+    S.sel = { k: "c", ano: c.ano, cargo: c.cargo, uf: c.uf, n: c.n };
+    atualizar(true, true);
+  }
   var listaGen = 0, listaAtual = [];   // listaAtual: a lista inteira do filtro (a tela mostra só parte)
   function desenharLista() {
     var g = ++listaGen, el = q("candList"), anoL = anoLista(), cs = cargosDoFiltro();
@@ -7468,22 +7497,28 @@ const MX = (function () {
       var t22 = cur && cur.tipo === "p" && cur.sg === FOCO && S.ano === "cmp" ? cur.total22 : null;
       listaAtual = lista;
       var tpad = S.genero ? lista.reduce(function (a, r) { return a + r.t; }, 0) : somaPartidoFoco(base);
-      var html = itemPartido(FOCO, tp != null ? tp : tpad, sub + (S.genero ? " · só " + rotuloGenero() + ", sem legenda" : " · nominais + legenda"), t22);
+      var html = S.cargo === "*" ? "" : itemPartido(FOCO, tp != null ? tp : tpad, sub + (S.genero ? " · só " + rotuloGenero() + ", sem legenda" : " · nominais + legenda"), t22);
       html += lista.map(function (r) { return itemCand(r.c, r.t); }).join("");
       if (!lista.length) html += '<div class="mx-vazio">Nenhum candidato do ' + FOCO + " com voto neste filtro.</div>";
-      return por(html, plural(lista.length, "candidato"));
+      por(html, plural(lista.length, "candidato"));
+      return autoSel(lista[0] && lista[0].c);
     }
 
     q("fPartidoField").style.display = "";
     // outros: só candidatos, do partido escolhido no filtro ou de todos.
     // Sem UF (salvo Presidente), junta os arquivos de todas as UFs do cargo.
-    var ps = cs.map(function (c) { return carregar(anoL + "/p" + c + ".json"); });
-    var arqs = cs[0] === 1 ? [anoL + "/c1-BR.json"] : S.uf ? [arqCands(anoL, S.uf)]
-      : baseAno(anoL).arquivos.filter(function (a) { return cs.indexOf(+a.split("-")[0].slice(1)) >= 0; }).map(function (a) { return anoL + "/" + a + ".json"; });
+    // em "Todos os cargos" o total do partido somaria cargos diferentes: o filtro mostra quantos candidatos
+    var todos = S.cargo === "*";
+    var ps = todos ? [] : cs.map(function (c) { return carregar(anoL + "/p" + c + ".json"); });
+    var arqs = arquivosLista(anoL);
     if (!el.innerHTML || arqs.some(function (a) { return pronto(a) === undefined; })) el.innerHTML = '<div class="mx-vazio">Carregando os candidatos…</div>';
     Promise.all(ps.concat(arqs.map(carregar))).then(function (r) {
-      var partidos = {}, nps = cs.length;
-      if (S.genero) {
+      var partidos = {}, nps = ps.length;
+      if (todos) {
+        r.forEach(function (a) {
+          if (a) a.cands.forEach(function (c) { marcar(c, a); if ((!S.genero || c.g === S.genero) && votoNaUf(c)) partidos[c.p] = (partidos[c.p] || 0) + 1; });
+        });
+      } else if (S.genero) {
         // com gênero: total de cada partido = só os candidatos do gênero (sem legenda)
         r.slice(nps).forEach(function (a) {
           if (a) a.cands.forEach(function (c) {
@@ -7502,7 +7537,7 @@ const MX = (function () {
       var siglas = Object.keys(partidos).sort(function (x, y) { return partidos[y] - partidos[x]; });
       var opc = function (v, t) { return '<option value="' + esc(v) + '">' + t + "</option>"; };
       fp.innerHTML = opc("*", "Todos os partidos") +
-        siglas.map(function (x) { return opc(x, esc(x) + " · " + nf.format(partidos[x]) + " votos"); }).join("");
+        siglas.map(function (x) { return opc(x, esc(x) + " · " + (todos ? plural(partidos[x], "candidato") : nf.format(partidos[x]) + " votos")); }).join("");
       fp.value = S.partido;
       var cands = [];
       r.slice(nps).forEach(function (a) { if (a) a.cands.forEach(function (c) { marcar(c, a); cands.push(c); }); });
@@ -7516,6 +7551,7 @@ const MX = (function () {
       por(html, plural(cands.length, "candidato"));
       var mais = q("maisCands");
       if (mais) mais.onclick = function () { S.mostrar += LISTA_PASSO * 2; desenharLista(); };
+      if (g === listaGen) autoSel(cands[0] && cands[0].c);
     });
   }
   function somaPartidoFoco(base) {
@@ -7538,7 +7574,7 @@ const MX = (function () {
       // 2º clique no mesmo candidato desmarca (volta ao partido)
       S.sel = bt.classList.contains("on") ? null : { k: "c", ano: p[0], cargo: +p[1], uf: p[2], n: +p[3] };
     }
-    atualizar(true);
+    atualizar(true, true);
   }
 
   // ---------- exportar CSV (respeita o filtro atual) ----------
@@ -7555,7 +7591,7 @@ const MX = (function () {
   function slug(t) { return norm(t).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
   function exportarCsv() {
     if (!cur) { toast("O mapa ainda está carregando"); return; }
-    var anoTxt = S.ano === "cmp" ? "2022x2026" : anoLista(), base = "mapa-eleitoral_" + anoTxt + "_" + slug(nomeCargoFiltro()) + "_" + (S.uf || "BR");
+    var anoTxt = S.ano === "cmp" ? "2022x2026" : anoLista(), base = "mapa-eleitoral_" + anoTxt + "_" + slug(nomeCargoMapa()) + "_" + (S.uf || "BR");
     if (cur.vazio) {   // sem seleção: a lista de candidatos da esquerda (com os filtros dela)
       var lc = [["Ano", "Cargo", "UF", "Número", "Candidato", "Partido", "Gênero", "Situação", "Votos"]];
       listaAtual.forEach(function (x) {
@@ -7575,7 +7611,7 @@ const MX = (function () {
     var linhasCsv = [cab], sel = cur.titulo + (cur.tipo === "c" ? " (" + cur.c.p + " " + cur.c.n + ")" : "");
     l.forEach(function (r) {
       var u = U(r.i), m = MUN[u.mun];
-      var lin = [anoTxt, nomeCargoFiltro(), sel, u.uf, m.nome, m.ibge];
+      var lin = [anoTxt, nomeCargoMapa(), sel, u.uf, m.nome, m.ibge];
       if (zona()) lin = lin.concat([u.zona, titulo((G.zn || {})[String(r.i)] || "")]);
       lin = lin.concat([csvNum(aptos(anoPri, r.i)), csvNum(compar(anoPri, r.i)), csvNum(r.votos), csvNum(r.validos), csvNum(r.pct, 2), csvNum(r.mil, 2), csvNum(soma ? 100 * r.votos / soma : 0, 2)]);
       if (cmp) lin = lin.concat([csvNum(r.v22), csvNum(r.pct22, 2), csvNum(r.dv), csvNum(r.dpp, 2), csvNum(r.dpc, 1)]);
@@ -7686,7 +7722,7 @@ const MX = (function () {
         (origemZona(i) ? " · " + esc(origemZona(i)) : "") + "</p></div>" +
         '<button type="button" class="btn sm" id="mx-voltar">← Voltar ao ranking</button></div>' +
       '<div class="kpis mx-kpis mx-dk">' + kpiHtml(kp) + "</div>" +
-      '<div class="panel-h"><h2>Ranking ' + (zona() && !u.unica ? "na zona" : "no município") + '</h2><span class="meta num" id="mx-rkCnt">' + esc(nomeCargoFiltro()) + " · " + anoPri + "</span></div>" +
+      '<div class="panel-h"><h2>Ranking ' + (zona() && !u.unica ? "na zona" : "no município") + '</h2><span class="meta num" id="mx-rkCnt">' + esc(nomeCargoMapa()) + " · " + anoPri + "</span></div>" +
       '<div class="mx-tab" id="mx-rkWrap"><p class="note mx-dica">Carregando…</p></div>' +
       '<p class="note mx-dica">Clique num candidato para vê-lo no mapa.</p>';
     q("voltar").onclick = function () { selecionarMun(i); };
@@ -7709,7 +7745,7 @@ const MX = (function () {
       });
       if (!rk.length) html += '<tr><td colspan="5" style="color:var(--muted)">Nenhum voto nominal neste cargo.</td></tr>';
       wrap.innerHTML = html + "</tbody></table>";
-      q("rkCnt").textContent = nomeCargoFiltro() + " · " + anoPri + " · " + nf.format(rk.length) + " candidatos com voto";
+      q("rkCnt").textContent = nomeCargoMapa() + " · " + anoPri + " · " + nf.format(rk.length) + " candidatos com voto";
       wrap.querySelector("tbody").onclick = function (e) {
         var tr = e.target.closest("tr[data-c]"); if (!tr) return;
         var p = tr.getAttribute("data-c").split("-");
@@ -7718,7 +7754,7 @@ const MX = (function () {
         var c = acharCand(S.sel), pc = c ? c.p : "";
         if (S.modo === "foco" && pc !== FOCO) { S.modo = "outros"; segOn("fModo", "outros"); }
         if (S.modo === "outros" && S.partido !== "*" && pc && pc !== S.partido) S.partido = pc;
-        atualizar(false);
+        atualizar(false, true);
       };
     });
   }
