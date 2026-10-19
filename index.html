@@ -2342,10 +2342,10 @@ function vFinanceiro() {
   const brl2 = n => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   return `<div class="wrap">${head('Financeiro', 'Despesas do gabinete e do escritório de bairro, mês a mês.', `<a class="btn" href="#despesas-fixas">Despesas fixas</a>${newBtn('despesa', 'Nova despesa')}`)}
   <div class="calbar"><button type="button" class="btn sm" data-act="fin-mes" data-d="-1" aria-label="Mês anterior">‹</button><button type="button" class="btn sm" data-act="fin-mes" data-d="0">Mês atual</button><button type="button" class="btn sm" data-act="fin-mes" data-d="1" aria-label="Próximo mês">›</button><h2>${MES[m - 1]} de ${y}</h2></div>
-  <section class="money-strip"><div><p class="l">Total do mês</p><p class="v">${brl2(sum(() => true))}</p><p class="note">${L.length} lançamentos</p></div><div><p class="l">Pago</p><p class="v">${brl2(sum(d => d.pago))}</p></div><div><p class="l">Em aberto</p><p class="v">${brl2(sum(d => !d.pago && d.vencimento >= T0))}</p></div><div><p class="l">Vencido</p><p class="v" style="color:var(--crit)">${brl2(sum(d => !d.pago && d.vencimento < T0))}</p></div></section>
+  <section class="money-strip"><div><p class="l">Total do mês</p><p class="v">${brl2(sum(() => true))}</p><p class="note">${L.length} lançamentos</p></div><div><p class="l">Pago</p><p class="v">${brl2(sum(d => d.pago))}</p><p class="note">${L.filter(d => d.pago && (d.comprovantes || []).length).length} de ${L.filter(d => d.pago).length} com comprovante</p></div><div><p class="l">Em aberto</p><p class="v">${brl2(sum(d => !d.pago && d.vencimento >= T0))}</p></div><div><p class="l">Vencido</p><p class="v" style="color:var(--crit)">${brl2(sum(d => !d.pago && d.vencimento < T0))}</p></div></section>
   <div class="grid-3">
     <section class="span-2" style="min-width:0"><div class="tablewrap"><table><thead><tr><th>Vencimento</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th>Situação</th><th class="r"></th></tr></thead><tbody>
-      ${L.map(d => `<tr class="click" tabindex="0" data-act="open" data-type="despesa" data-id="${d.id}"><td class="num">${fD(d.vencimento)}</td><td><div class="t">${esc(d.descricao)}</div><div class="s">${esc(d.fornecedor || '')}${d.recId ? ' · fixa' : ''}</div></td><td>${esc(d.categoria)}</td><td class="r mono">${brl2(d.valor)}</td><td>${chip(sit(d))}</td><td class="r">${d.pago ? '' : `<button type="button" class="btn sm" data-act="desp-pagar" data-id="${d.id}">Marcar como paga</button>`}</td></tr>`).join('') || '<tr class="empty-row"><td colspan="6">Nenhuma despesa neste mês.</td></tr>'}
+      ${L.map(d => `<tr class="click" tabindex="0" data-act="open" data-type="despesa" data-id="${d.id}"><td class="num">${fD(d.vencimento)}</td><td><div class="t">${esc(d.descricao)}</div><div class="s">${esc(d.fornecedor || '')}${d.recId ? ' · fixa' : ''}</div></td><td>${esc(d.categoria)}</td><td class="r mono">${brl2(d.valor)}</td><td>${chip(sit(d))}${(d.comprovantes || []).length ? ` <span class="cp-ic" title="${d.comprovantes.length} ${d.comprovantes.length === 1 ? 'comprovante' : 'comprovantes'}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7"/></svg>${d.comprovantes.length}</span>` : ''}</td><td class="r">${d.pago ? '' : `<button type="button" class="btn sm" data-act="desp-pagar" data-id="${d.id}">Marcar como paga</button>`}</td></tr>`).join('') || '<tr class="empty-row"><td colspan="6">Nenhuma despesa neste mês.</td></tr>'}
     </tbody></table></div></section>
     <section class="panel"><div class="panel-h"><h2>Por categoria</h2></div><div class="panel-b">${L.length ? bars(DESP_CATS.map(c => ({ l: c, v: Math.round(L.filter(d => d.categoria === c).reduce((s, d) => s + d.valor, 0)) })).filter(x => x.v).sort((a, b) => b.v - a.v), { fmt: v => brl(v) }) : '<p class="note">Sem lançamentos.</p>'}</div></section>
   </div></div>`;
@@ -2551,7 +2551,7 @@ document.addEventListener('click', e => {
     case 'news-all': NEWS.forEach(n => { if (D.feeds.includes(n.feed) && !D.lidas.includes(n.id)) D.lidas.push(n.id); }); save(); toast('Todas marcadas como lidas'); render(); break;
     case 'news-add': { const v = $('#news-novo').value.trim(); if (!v) return; if (!D.feeds.includes(v)) D.feeds.push(v); save(); toast(`Monitorando “${v}”`); render(); break; }
     case 'fin-mes': { const s = ui('fin', { mes: ym(TODAY) }), d = +a.dataset.d; if (d === 0) s.mes = ym(TODAY); else { const [y, m] = s.mes.split('-').map(Number); s.mes = ym(new Date(y, m - 1 + d, 1)); } render(); break; }
-    case 'desp-pagar': { e.stopPropagation(); byId('despesas', id).pago = true; save(); toast('Despesa marcada como paga'); render(); break; }
+    case 'desp-pagar': { e.stopPropagation(); if (typeof openPagamento === 'function') openPagamento(id); else { byId('despesas', id).pago = true; save(); toast('Despesa marcada como paga'); render(); } break; }
     case 'rec-gerar': {
       const mes = ym(TODAY), feitos = D.despesas.filter(d => d.recId && d.vencimento.startsWith(mes)).map(d => d.recId); let n = 0;
       D.recorrentes.filter(r => r.ativa && !feitos.includes(r.id)).forEach(r => { D.despesas.push({ id: nextId('despesas'), descricao: r.descricao, categoria: r.categoria, fornecedor: r.fornecedor, vencimento: `${mes}-${pad(r.dia)}`, valor: r.valor, pago: false, recId: r.id }); n++; });
@@ -5490,6 +5490,191 @@ avpCss.textContent = `
 @media (max-width:560px){.avpainel{left:16px;right:16px!important;width:auto}}
 `;
 document.head.appendChild(avpCss);
+render();
+</script>
+<script>
+/* =====================================================================
+   v17: comprovantes de pagamento no financeiro (opcionais, com limite)
+   Os arquivos ficam no IndexedDB do navegador, separados por ambiente;
+   os dados do sistema guardam só nome, tipo, tamanho, hash e autoria.
+   ===================================================================== */
+const COMP = { max: 2e6, bruto: 15e6, qtd: 3, lado: 1600, tipos: { 'application/pdf': 'PDF', 'image/jpeg': 'JPG', 'image/png': 'PNG', 'image/webp': 'WEBP' } };
+const IDB_NOME = KEY + '-anexos';
+let idbP = null;
+const idb = () => idbP || (idbP = new Promise((ok, no) => {
+  try { const r = indexedDB.open(IDB_NOME, 1); r.onupgradeneeded = () => r.result.createObjectStore('arquivos'); r.onsuccess = () => ok(r.result); r.onerror = () => { idbP = null; no(r.error); }; }
+  catch (e) { idbP = null; no(e); }
+}));
+const idbOp = (modo, fn) => idb().then(db => new Promise((ok, no) => { const t = db.transaction('arquivos', modo), st = t.objectStore('arquivos'), r = fn(st); t.oncomplete = () => ok(r && r.result); t.onerror = () => no(t.error); t.onabort = () => no(t.error); }));
+const idbPut = (id, blob) => idbOp('readwrite', st => st.put(blob, id));
+const idbGet = id => idbOp('readonly', st => st.get(id));
+const idbDel = id => idbOp('readwrite', st => st.delete(id));
+
+async function prepararComprovante(file) {
+  const tipo = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : '');
+  if (/hei[cf]/i.test(tipo) || /\.hei[cf]$/i.test(file.name)) return { erro: `${file.name}: fotos HEIC não são aceitas. No celular, envie a foto como JPG ou tire um print do comprovante.` };
+  if (!COMP.tipos[tipo]) return { erro: `${file.name}: formato não aceito. Envie PDF, JPG, PNG ou WEBP.` };
+  if (tipo === 'application/pdf' && file.size > COMP.max) return { erro: `${file.name} tem ${fmtBytes(file.size)}. O limite é 2 MB por arquivo: gere um PDF menor ou envie uma foto do comprovante.` };
+  if (file.size > COMP.bruto) return { erro: `${file.name} tem ${fmtBytes(file.size)}, grande demais para um comprovante. O limite é 2 MB por arquivo.` };
+  let blob = file, nome = file.name;
+  if (tipo !== 'application/pdf') {
+    try {
+      const bmp = await createImageBitmap(file), lado = Math.max(bmp.width, bmp.height);
+      if (file.size > 1.5e6 || lado > 2000) { // foto grande de celular: reduz para leitura confortável
+        const f = Math.min(1, COMP.lado / lado), c = document.createElement('canvas');
+        c.width = Math.round(bmp.width * f); c.height = Math.round(bmp.height * f);
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+        for (const q of [.82, .7, .6]) { blob = await new Promise(r => c.toBlob(r, 'image/jpeg', q)); if (blob && blob.size <= COMP.max) break; }
+        nome = nome.replace(/\.[^.]+$/, '') + '.jpg';
+      }
+    } catch (e) { return { erro: `${file.name}: não foi possível ler a imagem. Tente outro arquivo.` }; }
+  }
+  if (!blob || blob.size > COMP.max) return { erro: `${nome} continua com ${fmtBytes(blob ? blob.size : file.size)} depois de reduzido. O limite é 2 MB por arquivo.` };
+  let hash = '';
+  try { hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].map(b => b.toString(16).padStart(2, '0')).join(''); } catch (e) {}
+  return { blob, nome, tipo: blob.type || tipo, tamanho: blob.size, hash, reduzido: blob !== file, original: file.size };
+}
+async function guardarComprovante(d, p) {
+  const id = 'cp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  await idbPut(id, p.blob);
+  const meta = { id, nome: p.nome, tipo: p.tipo, tamanho: p.tamanho, hash: p.hash, reduzido: p.reduzido, em: agoraS(), por: USUARIO };
+  d.comprovantes = [...(d.comprovantes || []), meta];
+  registrar('trilha', 'Comprovante anexado', { despesa: d.id, nome: d.descricao }, { arquivo: p.nome, tamanho: fmtBytes(p.tamanho), reduzido: p.reduzido, hashDoArquivo: p.hash });
+  return meta;
+}
+const CLIPE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7"/></svg>';
+const cpRegra = '<span class="hint">PDF, JPG, PNG ou WEBP, até 2 MB por arquivo e 3 por pagamento. Fotos grandes são reduzidas automaticamente.</span>';
+const cpDrop = (id, multiplo) => `<label class="cp-drop" for="${id}" data-drop-cp="${id}">${CLIPE}<span><b>Escolher arquivo</b> ou arrastar para cá</span><input type="file" id="${id}" accept="application/pdf,image/jpeg,image/png,image/webp" ${multiplo ? 'multiple' : ''} hidden></label>`;
+
+/* ---------- registrar pagamento ---------- */
+let PG = null; // { id, pend: [preparados], erros: [] }
+function openPagamento(id) {
+  const d = byId('despesas', id); if (!d) return;
+  PG = PG && PG.id === id ? PG : { id, pend: [], erros: [] };
+  const brl2 = n => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  openDrawer(`<div class="dwrap"><div class="dh"><div><p class="eyebrow">Registrar pagamento</p><h2>${esc(d.descricao)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
+  <div class="db">
+    <dl class="kv"><dt>Valor</dt><dd class="mono">${brl2(d.valor)}</dd><dt>Vencimento</dt><dd class="num">${fD(d.vencimento)}</dd>${d.fornecedor ? `<dt>Fornecedor</dt><dd>${esc(d.fornecedor)}</dd>` : ''}<dt>Categoria</dt><dd>${esc(d.categoria)}</dd></dl>
+    <div class="fld"><label for="pg-data">Data do pagamento</label><input type="date" id="pg-data" value="${hoje()}" max="${hoje()}"></div>
+    <div class="fld"><span class="lbl">Comprovante <span class="note">(opcional)</span></span>${PG.pend.length < COMP.qtd ? cpDrop('pg-arq', true) : ''}${cpRegra}</div>
+    ${PG.pend.length ? `<ul class="cp-lista">${PG.pend.map((p, i) => `<li><span class="cp-tp">${COMP.tipos[p.tipo] || 'ARQ'}</span><span class="cp-nm"><b>${esc(p.nome)}</b><span class="note">${fmtBytes(p.tamanho)}${p.reduzido ? ` · reduzido de ${fmtBytes(p.original)}` : ''}</span></span><button type="button" class="linkbtn" data-act="pg-tirar" data-i="${i}">Tirar</button></li>`).join('')}</ul>` : ''}
+    ${PG.erros.length ? `<div class="ferr">${PG.erros.map(esc).join('<br>')}</div>` : ''}
+  </div>
+  <div class="df"><span class="sp"></span><button type="button" class="btn" data-act="drawer-close">Cancelar</button><button type="button" class="btn primary" data-act="pg-ok">Confirmar pagamento${PG.pend.length ? ` com ${PG.pend.length} ${PG.pend.length === 1 ? 'comprovante' : 'comprovantes'}` : ''}</button></div></div>`);
+}
+async function cpEscolhidos(files, alvo) {
+  const lista = [...files]; if (!lista.length) return;
+  if (alvo === 'pg') {
+    PG.erros = [];
+    const cabe = COMP.qtd - PG.pend.length;
+    if (lista.length > cabe) PG.erros.push(`Cabem mais ${cabe} ${cabe === 1 ? 'arquivo' : 'arquivos'} neste pagamento; os demais foram ignorados.`);
+    for (const f of lista.slice(0, cabe)) { const p = await prepararComprovante(f); if (p.erro) PG.erros.push(p.erro); else PG.pend.push(p); }
+    openPagamento(PG.id);
+  } else {
+    const d = byId('despesas', +alvo), erros = [], ja = (d.comprovantes || []).length, cabe = COMP.qtd - ja;
+    if (lista.length > cabe) erros.push(`Esta despesa aceita mais ${cabe} ${cabe === 1 ? 'arquivo' : 'arquivos'}; os demais foram ignorados.`);
+    let n = 0;
+    for (const f of lista.slice(0, cabe)) {
+      const p = await prepararComprovante(f);
+      if (p.erro) { erros.push(p.erro); continue; }
+      try { await guardarComprovante(d, p); n++; } catch (e) { erros.push(`${p.nome}: o navegador não deixou guardar o arquivo (espaço ou modo privado).`); }
+    }
+    if (n) { save(); toast(n === 1 ? 'Comprovante anexado' : `${n} comprovantes anexados`); }
+    CP_ERROS = erros; openForm('despesa', d.id);
+  }
+}
+let CP_ERROS = [];
+
+/* ---------- ficha da despesa: comprovantes anexados ---------- */
+{
+  const _of17 = openForm;
+  openForm = function (type, id, preset) {
+    _of17(type, id, preset);
+    if (type !== 'despesa' || !id) return;
+    const d = byId('despesas', id), C = d.comprovantes || [], adm = ehAdmin(), erros = CP_ERROS; CP_ERROS = [];
+    const grid = $('#frm .fgrid'); if (!grid) return;
+    grid.insertAdjacentHTML('afterend', `<div class="fld cp-sec"><span class="lbl">Comprovantes${C.length ? ` <span class="note">(${C.length} de ${COMP.qtd})</span>` : ''}</span>
+      ${C.length ? `<ul class="cp-lista">${C.map(c => `<li><span class="cp-tp" data-cp-thumb="${c.id}" data-cp-tipo="${esc(c.tipo)}">${COMP.tipos[c.tipo] || 'ARQ'}</span><span class="cp-nm"><b>${esc(c.nome)}</b><span class="note">${fmtBytes(c.tamanho)} · ${avQuando ? avQuando(c.em) : fDH(c.em)} · ${esc(first(mName(c.por)))}${c.reduzido ? ' · reduzido' : ''}</span>${c.hash ? `<span class="note mono" title="SHA-256 ${c.hash}">SHA-256 ${c.hash.slice(0, 12)}…</span>` : ''}</span>
+        <span class="cp-bts"><button type="button" class="linkbtn" data-act="cp-baixar" data-id="${d.id}" data-c="${c.id}">Baixar</button>${adm ? `<button type="button" class="linkbtn danger-t" data-act="cp-remover" data-id="${d.id}" data-c="${c.id}">Remover</button>` : ''}</span></li>`).join('')}</ul>` : `<p class="note">${d.pago ? 'Nenhum comprovante anexado a este pagamento.' : 'Os comprovantes entram quando a despesa for paga, mas já podem ser anexados.'}</p>`}
+      ${C.length < COMP.qtd ? cpDrop('cp-arq-' + d.id, true) + cpRegra : '<span class="hint">Limite de 3 comprovantes por pagamento.</span>'}
+      ${!adm && C.length ? '<span class="hint">Só o perfil Administrador remove um comprovante; anexar fica registrado na trilha de auditoria.</span>' : ''}
+      ${erros.length ? `<div class="ferr">${erros.map(esc).join('<br>')}</div>` : ''}
+      <span class="hint">Os comprovantes são salvos na hora, sem precisar de “Salvar alterações”.</span></div>`);
+    // miniaturas das imagens
+    C.filter(c => c.tipo.startsWith('image/')).forEach(async c => {
+      try { const b = await idbGet(c.id), el = document.querySelector(`[data-cp-thumb="${c.id}"]`); if (b && el) { el.innerHTML = `<img src="${URL.createObjectURL(b)}" alt="">`; el.classList.add('img'); } } catch (e) {}
+    });
+  };
+}
+
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'pg-arq') cpEscolhidos(t.files, 'pg');
+  else if (/^cp-arq-\d+$/.test(t.id)) cpEscolhidos(t.files, t.id.slice(7));
+});
+// arrastar e soltar sobre a área de anexo
+document.addEventListener('dragover', e => { const z = e.target.closest && e.target.closest('[data-drop-cp]'); if (z) { e.preventDefault(); z.classList.add('over'); } });
+document.addEventListener('dragleave', e => { const z = e.target.closest && e.target.closest('[data-drop-cp]'); if (z) z.classList.remove('over'); });
+document.addEventListener('drop', e => {
+  const z = e.target.closest && e.target.closest('[data-drop-cp]'); if (!z) return;
+  e.preventDefault(); z.classList.remove('over');
+  const id = z.dataset.dropCp; cpEscolhidos(e.dataTransfer.files, id === 'pg-arq' ? 'pg' : id.slice(7));
+});
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act^="pg-"],[data-act^="cp-"]'); if (!a) return;
+  switch (a.dataset.act) {
+    case 'pg-tirar': PG.pend.splice(+a.dataset.i, 1); PG.erros = []; openPagamento(PG.id); break;
+    case 'pg-ok': (async () => {
+      const d = byId('despesas', PG.id), dt = $('#pg-data').value || hoje();
+      if (dt > hoje()) { PG.erros = ['A data do pagamento não pode ser no futuro.']; return openPagamento(PG.id); }
+      a.disabled = true; let falhou = 0;
+      for (const p of PG.pend) { try { await guardarComprovante(d, p); } catch (err) { falhou++; } }
+      d.pago = true; d.pagoEm = dt; d.pagoRegistradoEm = agoraS(); d.pagoPor = USUARIO;
+      registrar('trilha', 'Pagamento registrado', { despesa: d.id, nome: d.descricao }, { valor: d.valor, dataDoPagamento: dt, comprovantes: (d.comprovantes || []).length });
+      PG = null; save(); closeDrawer();
+      toast(falhou ? `Pagamento registrado, mas ${falhou} ${falhou === 1 ? 'comprovante não foi guardado' : 'comprovantes não foram guardados'}` : 'Pagamento registrado'); render();
+    })(); break;
+    case 'cp-baixar': (async () => {
+      const d = byId('despesas', +a.dataset.id), c = (d.comprovantes || []).find(x => x.id === a.dataset.c);
+      try { const b = await idbGet(c.id); if (!b) throw 0; await baixar(c.nome, b, 'Comprovante salvo'); } catch (err) { toast('O arquivo não está neste navegador. Os comprovantes ficam no aparelho em que foram anexados.'); }
+    })(); break;
+    case 'cp-remover': {
+      if (!ehAdmin()) return;
+      const li = a.closest('li'); if (li.querySelector('.cp-conf')) return;
+      a.insertAdjacentHTML('afterend', ` <span class="cp-conf">Remover? <button type="button" class="linkbtn danger-t" data-act="cp-remover-ok" data-id="${a.dataset.id}" data-c="${a.dataset.c}">Sim</button> <button type="button" class="linkbtn" data-act="cp-remover-nao">Não</button></span>`);
+      break;
+    }
+    case 'cp-remover-nao': a.closest('.cp-conf').remove(); break;
+    case 'cp-remover-ok': (async () => {
+      const d = byId('despesas', +a.dataset.id), c = d.comprovantes.find(x => x.id === a.dataset.c);
+      d.comprovantes = d.comprovantes.filter(x => x.id !== c.id);
+      d.comprovantesRemovidos = [...(d.comprovantesRemovidos || []), { ...c, removidoEm: agoraS(), removidoPor: USUARIO }];
+      try { await idbDel(c.id); } catch (err) {}
+      registrar('trilha', 'Comprovante removido', { despesa: d.id, nome: d.descricao }, { arquivo: c.nome, hashDoArquivo: c.hash, anexadoPor: mName(c.por), anexadoEm: c.em });
+      save(); toast('Comprovante removido'); openForm('despesa', d.id); render();
+    })(); break;
+  }
+});
+
+const cpCss = document.createElement('style');
+cpCss.textContent = `
+.cp-drop{display:flex;gap:10px;align-items:center;justify-content:center;border:1.5px dashed var(--line-strong);border-radius:var(--r);padding:16px 12px;cursor:pointer;color:var(--muted);background:var(--surface);font-size:13px;text-align:center}
+.cp-drop b{color:var(--accent);font-weight:600}
+.cp-drop:hover,.cp-drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.cp-drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.cp-lista{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.cp-lista li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:var(--r);padding:6px 10px 6px 6px;background:var(--surface)}
+.cp-tp{width:44px;height:44px;border-radius:var(--r);background:var(--surface-2);display:grid;place-items:center;font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:.04em;overflow:hidden}
+.cp-tp.img img{width:100%;height:100%;object-fit:cover}
+.cp-nm{display:grid;gap:1px;min-width:0}
+.cp-nm b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-bts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.danger-t{color:var(--crit)!important}
+.cp-conf{font-size:12px;color:var(--crit)}
+.cp-sec{display:grid;gap:8px;margin-top:4px}
+.cp-ic{display:inline-flex;align-items:center;gap:2px;color:var(--muted);font-size:12px;vertical-align:middle;margin-left:4px}
+`;
+document.head.appendChild(cpCss);
 render();
 </script>
 <script>
