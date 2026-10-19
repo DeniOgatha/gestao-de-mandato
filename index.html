@@ -3591,7 +3591,7 @@ async function pdfVisita(vid) {
   para(v.encaminhamento || 'Sem encaminhamento.');
   if (v.demanda) { const d = byId('demandas', v.demanda); if (d) para(`Demanda aberta: ${d.protocolo} · ${d.titulo} · ${d.orgao} · prazo ${fD(d.prazo)}`, { size: 10 }); }
   head('Comunicação e consentimento');
-  para(v.waEm ? `Agradecimento enviado pelo WhatsApp em ${fD(v.waEm)} às ${fT(v.waEm)}.` : 'Agradecimento pelo WhatsApp ainda não enviado.', { size: 10 });
+  para(v.waEm ? `Agradecimento enviado pelo WhatsApp em ${fD(v.waEm)} às ${fT(v.waEm)}.` : v.waAbertoEm ? `Conversa de agradecimento aberta no WhatsApp em ${fD(v.waAbertoEm)} às ${fT(v.waAbertoEm)}, para envio pelo aparelho da equipe.` : 'Agradecimento pelo WhatsApp ainda não enviado.', { size: 10 });
   if (k.lgpd) para(`O visitante autorizou, no check-in das ${fT(k.chegada)}, o registro desta visita e o contato do gabinete pelo WhatsApp (Lei 13.709/2018).`, { size: 10, c: MUT });
   // rodapé em todas as páginas
   const n = doc.getNumberOfPages(), ger = new Date();
@@ -3731,7 +3731,7 @@ function openVisitaReg(vid, aviso) {
       <div class="sect"><h3>Registro em PDF</h3><div class="ck-act"><button type="button" class="btn" data-act="ck-pdf" data-id="${v.id}">Baixar registro (PDF)</button><span class="note">${v.pdfEm ? `Gerado em ${fD(v.pdfEm)} às ${fT(v.pdfEm)} e guardado no Drive, pasta Registros de visita.` : ''}</span></div></div>
       <div class="sect"><h3>Agradecimento pelo WhatsApp</h3>
         <p class="ck-msg">${esc(msg)}</p>
-        <div class="ck-act" style="margin-top:8px">${v.waEm ? `<span class="chip s-ok">Enviado em ${fD(v.waEm)} às ${fT(v.waEm)}</span>` : (k.lgpd === false ? '<span class="note">Sem autorização de contato.</span>' : `<button type="button" class="btn primary" data-act="ck-wa-env" data-id="${v.id}">Enviar pelo canal do gabinete</button>`)}
+        <div class="ck-act" style="margin-top:8px">${v.waEm ? `<span class="chip s-ok">Enviado em ${fD(v.waEm)} às ${fT(v.waEm)}</span>` : (v.waAbertoEm ? `<span class="chip s-info">Aberto no WhatsApp às ${fT(v.waAbertoEm)}</span>` : '') + (k.lgpd === false ? '<span class="note">Sem autorização de contato.</span>' : `<button type="button" class="btn primary" data-act="ck-wa-env" data-id="${v.id}">Enviar pelo canal do gabinete</button>`)}
           <a class="btn ck-wa-link" href="${esc(waLink(c.telefone || k.telefone, msg))}" target="_blank" rel="noopener" data-vid="${v.id}">Abrir no WhatsApp</a></div>
         <p class="note" style="margin-top:6px">“Abrir no WhatsApp” abre a conversa com o texto pronto para enviar do seu aparelho. Os telefones do exemplo são fictícios.</p></div>
     </div>
@@ -3798,7 +3798,7 @@ render = function () {
 /* ---------- ações ---------- */
 document.addEventListener('click', e => {
   const wl = e.target.closest('.ck-wa-link');
-  if (wl) { const v = byId('visitas', +wl.dataset.vid); if (v && !v.waEm) { enviarAgradecimento(v); save(); render(); setTimeout(() => openVisitaReg(v.id), 0); } return; }
+  if (wl) { const v = byId('visitas', +wl.dataset.vid); if (v && !v.waEm) { v.waAbertoEm = agora(); save(); setTimeout(() => openVisitaReg(v.id), 0); } return; }
   const a = e.target.closest('[data-act]'); if (!a) return;
   const id = +a.dataset.id || 0, k = D.checkins.find(x => x.id === id);
   switch (a.dataset.act) {
