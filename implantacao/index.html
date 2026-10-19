@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Implantação da Gestão de Mandato</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  /* Layout: uma coluna de leitura (~720px), tabelas com linhas horizontais, números à direita */
+  :root {
+    --bg: #ffffff;
+    --ink: #1c1f23;
+    --muted: #5b626a;
+    --rule: #dde1e4;
+    --rule-strong: #1c1f23;
+    --tint: #f2f5f6;
+    --accent: #1f4e5f;
+    --accent-soft: rgba(31, 78, 95, 0.10);
+    --edge: #8b9198;
+    --good: #2f6b3f;
+    --warn: #8a5a12;
+    --crit: #9a3324;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --sans: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15181b; --ink: #e6e9ec; --muted: #9aa2aa; --rule: #2c3237; --rule-strong: #c9ced3;
+      --tint: #1e2327; --accent: #7fb3c4; --accent-soft: rgba(127, 179, 196, 0.14); --edge: #6d757d;
+      --good: #7fc28f; --warn: #d9ad62; --crit: #e48a7a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15181b; --ink: #e6e9ec; --muted: #9aa2aa; --rule: #2c3237; --rule-strong: #c9ced3;
+    --tint: #1e2327; --accent: #7fb3c4; --accent-soft: rgba(127, 179, 196, 0.14); --edge: #6d757d;
+    --good: #7fc28f; --warn: #d9ad62; --crit: #e48a7a; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 760px; margin: 0 auto; padding-block: 40px 72px; }
+
+  h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; text-wrap: balance; }
+  h1 { font-size: clamp(30px, 6vw, 42px); line-height: 1.1; margin: 0 0 6px; }
+  h2 { font-size: 24px; line-height: 1.25; margin: 48px 0 10px; padding-top: 14px; border-top: 1.5px solid var(--rule-strong); }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 6px; }
+  p { margin: 0 0 12px; max-width: 68ch; }
+  b { font-weight: 600; }
+
+  .eyebrow { font-size: 12.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+  .subtitle { font-family: var(--serif); font-size: 21px; color: var(--muted); margin: 0 0 24px; }
+  .lead { font-size: 18px; line-height: 1.55; }
+  .note { color: var(--muted); font-size: 14.5px; }
+
+  .figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--rule); margin: 24px 0; }
+  .figures div { padding: 14px 16px 14px 0; min-width: 0; }
+  .figures div + div { padding-left: 16px; border-left: 1px solid var(--rule); }
+  .figures b { display: block; font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.15; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .figures span { font-size: 14px; color: var(--muted); }
+
+  .tw { overflow-x: auto; margin: 10px 0 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th { text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 8px 0; border-bottom: 1.5px solid var(--rule-strong); vertical-align: bottom; }
+  td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.45; }
+  td:first-child { font-weight: 600; }
+  th:last-child, td:last-child { padding-right: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td .sub { display: block; font-weight: 400; color: var(--muted); font-size: 13.5px; }
+  tr.total td { border-top: 1.5px solid var(--rule-strong); border-bottom: none; font-weight: 600; background: var(--tint); }
+  tr.total td:first-child { padding-left: 10px; }
+  tr.total td:last-child { padding-right: 10px; }
+  tr.per td { font-weight: 400; color: var(--muted); border-bottom: none; }
+  tr.per td:first-child { padding-left: 10px; }
+  tr.per td:last-child { padding-right: 10px; }
+  .lvl-alta { color: var(--crit); font-weight: 600; }
+  .lvl-media { color: var(--warn); font-weight: 600; }
+  .lvl-baixa { color: var(--good); font-weight: 600; }
+  table.wide { min-width: 560px; }
+
+  ul { margin: 4px 0 14px; padding-left: 20px; }
+  li { margin: 0 0 7px; }
+  li::marker { color: var(--muted); }
+  .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; }
+
+  figure { margin: 22px 0 10px; }
+  .dia { overflow-x: auto; }
+  .dia svg { display: block; width: 100%; min-width: 620px; height: auto; }
+  .dia text { font-family: var(--sans); }
+  .t-ink { fill: var(--ink); }
+  .t-muted { fill: var(--muted); }
+  .box { fill: none; stroke: var(--edge); stroke-width: 1.25; }
+  .box-main { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+  .wire { fill: none; stroke: var(--edge); stroke-width: 1.25; }
+  .arrowhead { fill: var(--edge); }
+  figcaption { font-size: 14.5px; color: var(--muted); margin-top: 8px; }
+
+  @media (max-width: 620px) {
+    .figures { grid-template-columns: minmax(0, 1fr); }
+    .figures div, .figures div + div { padding: 12px 0; border-left: none; }
+    .figures div + div { border-top: 1px solid var(--rule); }
+    .cols { grid-template-columns: minmax(0, 1fr); }
+    h2 { margin-top: 40px; }
+  }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">Resumo para a diretoria · 19 de outubro de 2026</div>
+<h1>Sistema de Gestão de Mandato</h1>
+<p class="subtitle">Resumo de implantação</p>
+
+<p class="lead">O sistema pode começar com cerca de <b>R$ 250 por mês</b> de infraestrutura (opção enxuta) ou cerca de <b>R$ 950 por mês</b> (opção completa), sempre no CNPJ da empresa contratante. A hospedagem é a parte simples. O trabalho maior está na segurança dos dados de eleitores: isolamento entre gabinetes, segundo fator, registro de acessos, backup testado e LGPD.</p>
+
+<div class="figures">
+  <div><b>~R$ 250</b><span>por mês, opção enxuta</span></div>
+  <div><b>~R$ 950</b><span>por mês, opção completa</span></div>
+  <div><b>R$ 13 a 48</b><span>por gabinete por mês, com 20 gabinetes</span></div>
+</div>
+
+<p>É um sistema web de gestão de gabinete parlamentar (contatos, demandas, agenda, tarefas, emendas e acompanhamento legislativo), com 10 a 20 usuários por gabinete. Este é um resumo para orientar decisões, não uma proposta comercial. Valores aproximados (US$ 1 ≈ R$ 5,50), a conferir antes de contratar.</p>
+
+<h2 id="ferramentas">Ferramentas e para que servem</h2>
+<p>Duas peças fazem o sistema funcionar: o <b>backend</b> (Supabase guarda e protege os dados) e a <b>hospedagem</b> (Vercel coloca as telas no ar). As demais garantem a operação e o controle da empresa.</p>
+<div class="tw"><table class="wide">
+  <thead><tr><th style="width:30%">Ferramenta</th><th style="width:38%">Função</th><th>Necessidade</th></tr></thead>
+  <tbody>
+    <tr><td>Supabase</td><td>Banco de dados, login, permissões e backup, em São Paulo</td><td>Obrigatório</td></tr>
+    <tr><td>Vercel</td><td>Coloca o sistema no ar, com HTTPS</td><td>Obrigatório<span class="sub">Cloudflare Pages é alternativa grátis</span></td></tr>
+    <tr><td>GitHub</td><td>Guarda o código e publica as atualizações</td><td>Obrigatório, grátis</td></tr>
+    <tr><td>Domínio</td><td>Endereço do sistema e dos e-mails que ele envia</td><td>Obrigatório<span class="sub">pode ser subdomínio do atual</span></td></tr>
+    <tr><td>Envio de e-mails<span class="sub">Resend ou Amazon SES</span></td><td>Convites, recuperação de senha e avisos aos usuários</td><td>Obrigatório<span class="sub">grátis até 3 mil e-mails por mês</span></td></tr>
+    <tr><td>Armazenamento do backup<span class="sub">Cloudflare R2</span></td><td>Guarda a cópia própria do banco, criptografada</td><td>Necessário na enxuta<span class="sub">grátis até 10 GB</span></td></tr>
+    <tr><td>E-mail da empresa</td><td>Cadastro e recuperação das contas acima</td><td>Necessário<span class="sub">Gmail gratuito basta</span></td></tr>
+    <tr><td>Cofre de senhas</td><td>Guarda os acessos sob controle da empresa</td><td>Necessário<span class="sub">grátis para 2 pessoas</span></td></tr>
+    <tr><td>Sentry</td><td>Avisa quando o sistema dá erro, sem receber dados pessoais</td><td>Recomendado<span class="sub">grátis no início</span></td></tr>
+  </tbody>
+</table></div>
+<p class="note">O Supabase só envia e-mails de teste por conta própria. Em produção, convites e recuperação de senha dependem do serviço de envio.</p>
+
+<figure>
+<div class="dia">
+<svg viewBox="0 0 760 328" role="img" aria-label="O código passa pelo teste antes da produção, e tudo roda em São Paulo" font-size="13">
+  <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+  <text class="t-ink" x="24" y="34" font-size="15" font-weight="600">O código passa pelo teste antes da produção, e tudo roda em São Paulo</text>
+  <g class="wire">
+    <path d="M200 114H216" marker-end="url(#arr)"/><path d="M200 250H216" marker-end="url(#arr)"/>
+    <path d="M392 124H408" marker-end="url(#arr)"/><path d="M392 260H408" marker-end="url(#arr)"/>
+    <path d="M608 114H576" marker-end="url(#arr)"/><path d="M608 250H576" marker-end="url(#arr)"/>
+  </g>
+  <rect class="box" x="24" y="60" width="176" height="244" rx="8"/>
+  <rect class="box" x="216" y="60" width="360" height="108" rx="8"/>
+  <rect class="box" x="232" y="96" width="160" height="56" rx="8"/>
+  <rect class="box" x="408" y="96" width="152" height="56" rx="8"/>
+  <rect class="box" x="216" y="196" width="360" height="108" rx="8"/>
+  <rect class="box" x="232" y="232" width="160" height="56" rx="8"/>
+  <rect class="box-main" x="408" y="232" width="152" height="56" rx="8"/>
+  <rect class="box" x="608" y="86" width="128" height="56" rx="8"/>
+  <rect class="box" x="608" y="222" width="128" height="56" rx="8"/>
+  <text class="t-ink" x="40" y="84" font-weight="600">GitHub (código)</text>
+  <text class="t-ink" x="40" y="118">develop → teste</text>
+  <text class="t-muted" x="40" y="178" font-size="11.5">main só recebe código</text>
+  <text class="t-muted" x="40" y="194" font-size="11.5">aprovado no teste</text>
+  <text class="t-ink" x="40" y="254">main → produção</text>
+  <text class="t-ink" x="232" y="84" font-weight="600">Ambiente de teste</text>
+  <text class="t-muted" x="560" y="84" text-anchor="end" font-size="11.5">teste.dominio.com.br</text>
+  <text class="t-ink" x="248" y="120" font-weight="600">Vercel</text>
+  <text class="t-muted" x="248" y="138" font-size="11.5">execução em São Paulo</text>
+  <text class="t-ink" x="424" y="120" font-weight="600">Supabase teste</text>
+  <text class="t-muted" x="424" y="138" font-size="11.5">dados fictícios</text>
+  <text class="t-ink" x="232" y="220" font-weight="600">Ambiente de produção</text>
+  <text class="t-muted" x="560" y="220" text-anchor="end" font-size="11.5">app.dominio.com.br</text>
+  <text class="t-ink" x="248" y="256" font-weight="600">Vercel</text>
+  <text class="t-muted" x="248" y="274" font-size="11.5">execução em São Paulo</text>
+  <text class="t-ink" x="424" y="256" font-weight="600">Supabase produção</text>
+  <text class="t-muted" x="424" y="274" font-size="11.5">dados reais, backup</text>
+  <text class="t-ink" x="624" y="110" font-weight="600">Desenvolvedor</text>
+  <text class="t-muted" x="624" y="128" font-size="11.5">testa as mudanças</text>
+  <text class="t-ink" x="624" y="246" font-weight="600">Gabinetes</text>
+  <text class="t-muted" x="624" y="264" font-size="11.5">com 2º fator</text>
+</svg>
+</div>
+<figcaption>As mudanças entram pelo ramo develop e só chegam à produção depois de testadas. Os dois ambientes rodam em São Paulo e nunca compartilham dados.</figcaption>
+</figure>
+
+<h2 id="cnpj">Por que tudo fica no CNPJ da contratante</h2>
+<p>Toda conta, domínio e assinatura deve estar no nome da empresa e ser paga com o cartão dela. O desenvolvedor entra como administrador convidado, e um diretor da empresa é sempre o segundo administrador.</p>
+<ul>
+  <li><b>A empresa é dona do que paga.</b> Se o desenvolvedor sair, adoecer ou houver desacordo, a empresa continua com o sistema, os dados e o domínio.</li>
+  <li><b>Contas no e-mail da empresa.</b> Supabase, Vercel, GitHub e os demais serviços ficam cadastrados num e-mail criado pela empresa (um Gmail gratuito serve), com recuperação no celular de um diretor. Nunca no e-mail pessoal do desenvolvedor nem no institucional da Câmara.</li>
+  <li><b>LGPD.</b> O gabinete é o controlador dos dados e a empresa é a operadora: ela responde perante o gabinete e a ANPD pelo que faz com eles. Os contratos de tratamento de dados com os fornecedores precisam estar no nome da operadora.</li>
+  <li><b>Contratos com gabinetes.</b> O cliente contrata a empresa. A infraestrutura precisa estar no mesmo CNPJ que assina o contrato e emite a nota.</li>
+  <li><b>Continuidade.</b> Cartão da empresa com limite reservado evita que um serviço seja suspenso por falta de pagamento.</li>
+  <li><b>Contabilidade.</b> As assinaturas entram como despesa da empresa, com fatura no CNPJ.</li>
+</ul>
+
+<h2 id="custos">Custos: opção enxuta e opção completa</h2>
+<p>A enxuta é suficiente para o piloto e os primeiros gabinetes. A completa acrescenta backup de alta precisão e um ambiente de teste pago, que não pausa, e se justifica quando contratos exigirem ou a receita cobrir com folga (por exemplo, a partir de 15 gabinetes pagantes).</p>
+<div class="tw"><table>
+  <thead><tr><th>Item (por mês)</th><th class="num" style="width:22%">Enxuta</th><th class="num" style="width:22%">Completa</th></tr></thead>
+  <tbody>
+    <tr><td>Supabase Pro</td><td class="num">R$ 140</td><td class="num">R$ 140</td></tr>
+    <tr><td>Backup PITR</td><td class="num">—</td><td class="num">R$ 550</td></tr>
+    <tr><td>Servidor do banco (Small)</td><td class="num">—</td><td class="num">R$ 30</td></tr>
+    <tr><td>Ambiente de teste pago</td><td class="num">—</td><td class="num">R$ 55</td></tr>
+    <tr><td>Vercel Pro</td><td class="num">R$ 110</td><td class="num">R$ 110</td></tr>
+    <tr><td>Envio de e-mails</td><td class="num">grátis</td><td class="num">grátis</td></tr>
+    <tr><td>Armazenamento do backup</td><td class="num">grátis</td><td class="num">—</td></tr>
+    <tr><td>Cofre de senhas</td><td class="num">grátis</td><td class="num">R$ 65</td></tr>
+    <tr><td>Domínio</td><td class="num">R$ 3</td><td class="num">R$ 3</td></tr>
+    <tr class="total"><td>Total por mês</td><td class="num">~R$ 250</td><td class="num">~R$ 950</td></tr>
+    <tr class="per"><td>Por gabinete, com 20</td><td class="num">~R$ 13</td><td class="num">~R$ 48</td></tr>
+  </tbody>
+</table></div>
+
+<div class="cols">
+<ul>
+  <li><b>Backup:</b> a enxuta usa a cópia diária do Supabase (guardada por 7 dias) mais uma cópia própria, criptografada, a cada 6 horas. No pior caso, perdem-se até 6 horas de registros. A completa volta a qualquer minuto dos últimos 7 dias (PITR), o que exige o servidor Small.</li>
+  <li><b>Teste:</b> na enxuta, usa um projeto gratuito do Supabase em São Paulo, que pausa após uma semana sem uso. O endereço de teste já vem na Vercel Pro.</li>
+  <li><b>Homologação:</b> fora dos totais. Entra com o primeiro cliente do nível Profissional (~R$ 55 por mês).</li>
+  <li><b>Vercel:</b> o valor cobre 1 pessoa com acesso de publicação. Se o diretor também precisar desse acesso, conferir se a Vercel cobra outro assento (~R$ 110). Na Cloudflare Pages, sai a R$ 0.</li>
+</ul>
+<ul>
+  <li><b>Cofre:</b> grátis para 2 pessoas. Na completa, 3 pessoas.</li>
+  <li><b>Envio de e-mails:</b> grátis até 3 mil por mês, o que cobre convites e recuperações de senha de 20 gabinetes.</li>
+  <li><b>Domínio:</b> R$ 0 se o sistema usar o domínio que a empresa já tem.</li>
+  <li><b>E-mail:</b> fora da conta, porque um Gmail gratuito da empresa basta. O Google Workspace (~R$ 35 por conta) só entra se a empresa quiser e-mail profissional para a equipe.</li>
+  <li><b>Câmbio:</b> os serviços cobrados em dólar têm ainda IOF de 3,5% no cartão e variação do câmbio.</li>
+  <li>Com só 1 gabinete no piloto, o custo todo recai sobre ele.</li>
+</ul>
+</div>
+
+<h3>Antes do primeiro cliente</h3>
+<p>O desenvolvimento do sistema, um teste de invasão feito por empresa especializada e a revisão de contratos, termos e LGPD por um advogado. Esses itens ficam fora das estimativas deste resumo.</p>
+<h3>Podem entrar depois</h3>
+<p>Servidor maior se ficar lento (~R$ 250/mês), SMS para login (~R$ 410/mês + por mensagem), Sentry pago (~R$ 145/mês) e WhatsApp oficial (por conversa).</p>
+
+<h2 id="etapas">Etapas e complexidade</h2>
+<p>As etapas seguem esta ordem, mas a segurança não fica para o fim: a base dela (isolamento, segundo fator, perfis) é construída na etapa 2. A etapa 4 valida essa base e fecha a parte jurídica, que pode começar em paralelo desde o início. As etapas 2 e 4 são as mais pesadas: o cliente não as vê, mas um erro nelas expõe dados de eleitores.</p>
+<div class="tw"><table class="wide">
+  <thead><tr><th style="width:30%">Etapa</th><th>O que envolve</th><th style="width:17%">Complexidade</th></tr></thead>
+  <tbody>
+    <tr><td>1. Contas e contrato</td><td>Contrato, contas no CNPJ, segundo fator, cofre</td><td class="lvl-baixa">Baixa</td></tr>
+    <tr><td>2. Fundação técnica</td><td>Ambientes, publicação automática, isolamento por gabinete, login seguro, perfis</td><td class="lvl-alta">Alta</td></tr>
+    <tr><td>3. Módulos</td><td>Contatos, demandas, agenda, legislativo, emendas, relatórios</td><td class="lvl-media">Média a alta</td></tr>
+    <tr><td>4. Validação de segurança e LGPD</td><td>Backup testado, plano de incidentes, termos, RIPD, teste de invasão</td><td class="lvl-alta">Alta</td></tr>
+    <tr><td>5. Piloto</td><td>1 gabinete por 30 dias, com treinamento e ajustes</td><td class="lvl-media">Média</td></tr>
+    <tr><td>6. Operação</td><td>Novos gabinetes, suporte, atualizações, revisão de acessos</td><td>Contínua</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="seguranca">Segurança de dados</h2>
+<p>O sistema guarda dados de eleitores, inclusive opinião política, que a LGPD trata como dado sensível. Por isso a segurança é requisito desde o primeiro dia, não uma etapa final. Num vazamento, o gabinete precisa avisar a ANPD e os afetados em até 3 dias úteis, e depende da empresa para saber o que aconteceu. Há ainda o dano à imagem do parlamentar.</p>
+<div class="tw"><table>
+  <thead><tr><th style="width:26%">Camada</th><th>O que é feito</th></tr></thead>
+  <tbody>
+    <tr><td>Isolamento</td><td>Cada gabinete só vê os próprios dados. A regra fica no banco e é testada a cada mudança</td></tr>
+    <tr><td>Acesso</td><td>Segundo fator obrigatório e 5 perfis, do administrador ao somente leitura</td></tr>
+    <tr><td>Rastreabilidade</td><td>Registro de acessos, exportações e exclusões</td></tr>
+    <tr><td>Ambientes</td><td>Teste e homologação nunca recebem dados reais</td></tr>
+    <tr><td>Backup</td><td>Cópias automáticas e criptografadas, restauração testada antes do lançamento e a cada semestre</td></tr>
+    <tr><td>Senhas</td><td>Só no cofre, nunca no código nem em mensagens</td></tr>
+    <tr><td>Fornecedores</td><td>Dados em São Paulo e contrato de tratamento de dados com cada serviço</td></tr>
+    <tr><td>Rotina</td><td>Desligamento no mesmo dia e revisão trimestral de acessos</td></tr>
+    <tr><td>LGPD</td><td>Papéis definidos, DPO e contrato de dados com cada gabinete</td></tr>
+    <tr><td>Eleitoral</td><td>Mandato separado de campanha, sem venda de cadastros nem disparo em massa</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="pacote">Pacote de serviço sugerido por gabinete</h2>
+<p>A sugestão é cobrar uma implantação única mais uma mensalidade, em três níveis. Os preços ficam a definir: somam a infraestrutura (R$ 13 a 48 por gabinete no compartilhado), as horas de manutenção e suporte, e a margem.</p>
+<h3>Os três ambientes</h3>
+<ul>
+  <li><b>Produção:</b> o sistema em uso, com dados reais. Nos níveis Essencial e Profissional, os gabinetes dividem o mesmo ambiente, cada um isolado. No Dedicado, o gabinete tem um só dele.</li>
+  <li><b>Teste:</b> uso interno da equipe técnica para desenvolver e testar, só com dados fictícios. Custo da empresa, não vendido.</li>
+  <li><b>Homologação:</b> cópia do sistema onde o cliente aprova mudanças antes de irem para a produção. Entra nos níveis superiores.</li>
+</ul>
+<div class="tw"><table class="wide">
+  <thead><tr><th style="width:22%"></th><th style="width:26%">Essencial</th><th style="width:26%">Profissional</th><th>Dedicado</th></tr></thead>
+  <tbody>
+    <tr><td>Implantação</td><td>Configuração e 1 treinamento on-line</td><td>+ importação de dados e 2 treinamentos</td><td>+ treinamento presencial</td></tr>
+    <tr><td>Produção</td><td>Compartilhada</td><td>Compartilhada</td><td>Exclusiva</td></tr>
+    <tr><td>Homologação</td><td>—</td><td>Compartilhada</td><td>Exclusiva</td></tr>
+    <tr><td>Backup</td><td>Diário + a cada 6 h</td><td>Diário + a cada 6 h</td><td>Qualquer minuto (PITR)</td></tr>
+    <tr><td>Manutenção</td><td>Correções e segurança</td><td>+ 4 h/mês de ajustes</td><td>+ 10 h/mês de ajustes</td></tr>
+    <tr><td>Suporte crítico</td><td>1 dia útil</td><td>4 horas</td><td>2 horas, canal direto</td></tr>
+    <tr><td>Relatório de acessos ao gabinete</td><td>—</td><td>Trimestral</td><td>Mensal</td></tr>
+  </tbody>
+</table></div>
+<p class="note">Incidentes de segurança têm o mesmo atendimento em todos os níveis. Funcionalidades novas são orçadas à parte. A linha de backup vale para a opção enxuta: na completa, todos os níveis passam a ter PITR. O Dedicado custa à empresa cerca de R$ 700 por mês a mais em infraestrutura (produção própria com PITR e homologação própria), e o preço precisa cobrir isso.</p>
+<h3>Custo de infraestrutura por nível (estimativa)</h3>
+<p>Quanto cada gabinete custa à empresa em infraestrutura, conforme o nível contratado. É a base sobre a qual entram as horas de manutenção e suporte, os impostos e a margem.</p>
+<div class="tw"><table>
+  <thead><tr><th>Por gabinete, por mês</th><th class="num" style="width:20%">Essencial</th><th class="num" style="width:20%">Profissional</th><th class="num" style="width:20%">Dedicado</th></tr></thead>
+  <tbody>
+    <tr><td>Na opção enxuta</td><td class="num">~R$ 13</td><td class="num">~R$ 24</td><td class="num">~R$ 710</td></tr>
+    <tr><td>Na opção completa</td><td class="num">~R$ 48</td><td class="num">~R$ 59</td><td class="num">~R$ 710</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>Essencial:</b> a parte de cada gabinete no ambiente compartilhado, com 20 gabinetes.</li>
+  <li><b>Profissional:</b> a mesma parte, mais a homologação compartilhada (~R$ 55 por mês) dividida entre 5 gabinetes desse nível. Com só 1 gabinete no Profissional, sobe para ~R$ 68 na enxuta e ~R$ 103 na completa.</li>
+  <li><b>Dedicado:</b> produção própria com PITR e homologação própria (~R$ 700 por mês), mais a parte de Vercel, cofre e domínio, que continuam compartilhados. Por isso fica igual nas duas opções.</li>
+  <li>Valores arredondados, sem as horas de manutenção (4 h ou 10 h por mês nos níveis superiores) e sem a variação do câmbio.</li>
+</ul>
+
+<h2 id="decisoes">Decisões em aberto</h2>
+<p>As seis primeiras precisam de resposta antes de qualquer tarefa técnica. As demais podem ser decididas até o piloto.</p>
+<div class="tw"><table class="wide">
+  <thead><tr><th style="width:38%">Decisão</th><th>Recomendação</th><th style="width:19%">Prazo</th></tr></thead>
+  <tbody>
+    <tr><td>Contratação do desenvolvedor e dono do código</td><td>Deixar por escrito</td><td>Antes de começar</td></tr>
+    <tr><td>Opção de infraestrutura</td><td>Enxuta no piloto, completa quando contratos exigirem</td><td>Antes de começar</td></tr>
+    <tr><td>Domínio</td><td>Confirmar o atual e usar um subdomínio</td><td>Antes de começar</td></tr>
+    <tr><td>E-mail dos cadastros</td><td>Gmail gratuito criado pela empresa</td><td>Antes de começar</td></tr>
+    <tr><td>Segundo administrador das contas</td><td>Um diretor da empresa</td><td>Antes de começar</td></tr>
+    <tr><td>Data do piloto</td><td>A definir</td><td>Antes de começar</td></tr>
+    <tr><td>Gabinetes no primeiro ano</td><td>Piloto com 1, depois até 20</td><td>Até o piloto</td></tr>
+    <tr><td>Níveis e preços do pacote</td><td>A definir</td><td>Até o piloto</td></tr>
+    <tr><td>Encarregado de dados (DPO)</td><td>Pessoa da empresa ou serviço externo</td><td>Até o piloto</td></tr>
+    <tr><td>Advogado para contrato e LGPD</td><td>Confirmar se a empresa já tem</td><td>Até o piloto</td></tr>
+  </tbody>
+</table></div>
+</main>
+<p class="note" style="max-width:760px;margin:0 auto 40px"><a href="resumo-implantacao.pdf">Baixar em PDF</a></p>
+</body>
+</html>
