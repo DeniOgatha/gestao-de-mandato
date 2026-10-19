@@ -1,0 +1,48 @@
+name: Publicar ambientes
+
+# Um site do GitHub Pages com os três ambientes:
+#   main        -> produção    (raiz)
+#   homologacao -> homologação (/homologacao/)
+#   develop     -> teste       (/teste/)
+on:
+  push:
+    branches: [main, homologacao, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  montar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: producao }
+      - uses: actions/checkout@v4
+        with: { ref: homologacao, path: homologacao }
+      - uses: actions/checkout@v4
+        with: { ref: develop, path: teste }
+      - name: Montar o site
+        run: |
+          mkdir -p _site/homologacao _site/teste
+          rsync -a --exclude .git --exclude .github producao/ _site/
+          rsync -a --exclude .git --exclude .github homologacao/ _site/homologacao/
+          rsync -a --exclude .git --exclude .github teste/ _site/teste/
+          for a in producao homologacao teste; do echo "$a $(git -C $a rev-parse --short HEAD) $(git -C $a log -1 --format=%cI)"; done > _site/versoes.txt
+          touch _site/.nojekyll
+          cat _site/versoes.txt
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
+
+  publicar:
+    needs: montar
+    runs-on: ubuntu-latest
+    concurrency: { group: pages, cancel-in-progress: false }
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

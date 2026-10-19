@@ -866,6 +866,13 @@ body[data-theme="industrial"] :focus-visible{outline-color:var(--accent)}
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
+/* ambiente pelo endereço: /teste/ e /homologacao/ no GitHub Pages; o resto é produção */
+window.AMBIENTE = (() => {
+  const p = location.pathname, k = /\/teste\//.test(p) ? 'teste' : /\/homologacao\//.test(p) ? 'homologacao' : 'producao';
+  return { k, nome: { teste: 'Teste', homologacao: 'Homologação', producao: 'Produção' }[k] };
+})();
+</script>
+<script>
 /* ============ utilidades ============ */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1103,7 +1110,7 @@ function seed() {
   return { v: 1, equipe, etiquetas, contatos, eventos, demandas, tarefas, proposicoes, emendas, visitas, ligacoes, curriculos, formularios, leads };
 }
 
-const KEY = 'gestao-mandato-demo-v1';
+const KEY = 'gestao-mandato-demo-v1' + (AMBIENTE.k === 'producao' ? '' : '-' + AMBIENTE.k);
 let D;
 function load() { try { const s = localStorage.getItem(KEY); if (s) { const o = JSON.parse(s); if (o && o.v === 1) return o; } } catch (e) {} return seed(); }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(D)); } catch (e) {} }
@@ -4453,7 +4460,7 @@ async function prGerar() {
       ws['!cols'] = T.cols.map((c, i) => ({ wch: Math.min(48, Math.max(c.length, ...T.rows.slice(0, 200).map(r => String(r[i] ?? '').length)) + 2) }));
       ws['!autofilter'] = { ref: ws['!ref'] };
       X.utils.book_append_sheet(wb, ws, 'Dados');
-      const sobre = X.utils.aoa_to_sheet([['Relatório', T.titulo], ['Período', periodo], ['Linhas', T.rows.length], ['Gerado por', mName(USUARIO)], ['Em', fDH(agoraT)], ['Filtros', reg.filtros], ['Finalidade', fin], ['CPF', reg.cpf], ['Código', reg.codigo], ['Hash SHA-256 dos dados', hashDados], ['Registro na trilha', `nº ${ev.n}, hash ${ev.hash}`], ['Fonte do horário', 'relógio do aparelho (protótipo)'], ['Como conferir', 'Presença › Auditoria › Verificar um arquivo exportado'], ['Aviso', aviso]].map(r => r.map(xlsxSeguro)));
+      const sobre = X.utils.aoa_to_sheet([['Relatório', T.titulo], ['Período', periodo], ['Linhas', T.rows.length], ['Gerado por', mName(USUARIO)], ['Em', fDH(agoraT)], ['Filtros', reg.filtros], ['Finalidade', fin], ['CPF', reg.cpf], ['Código', reg.codigo], ['Hash SHA-256 dos dados', hashDados], ['Registro na trilha', `nº ${ev.n}, hash ${ev.hash}`], ['Ambiente', AMBIENTE.nome], ['Fonte do horário', 'relógio do aparelho (protótipo)'], ['Como conferir', 'Presença › Auditoria › Verificar um arquivo exportado'], ['Aviso', aviso]].map(r => r.map(xlsxSeguro)));
       sobre['!cols'] = [{ wch: 14 }, { wch: 90 }];
       X.utils.book_append_sheet(wb, sobre, 'Sobre');
       const buf = X.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -4689,7 +4696,7 @@ function anotarMudancas() {
   seedExtra = function () { const x = _seedExtra4(); x.registro = undefined; x.trilha = undefined; x.retencao = undefined; return x; };
   window.seedExtra = seedExtra;
   if (!D.registro) { iniciarRegistro(); SNAP = foto(); SNAP_D = D; _save(); } else { SNAP = foto(); SNAP_D = D; }
-  if (cur() !== 'checkin') { registrar('trilha', 'Sessão iniciada', { usuario: USUARIO, nome: mName(USUARIO) }, { perfil: perfilAtual(), autenticacao: 'sem login no protótipo' }); _save(); }
+  if (cur() !== 'checkin') { registrar('trilha', 'Sessão iniciada', { usuario: USUARIO, nome: mName(USUARIO) }, { perfil: perfilAtual(), ambiente: AMBIENTE.nome, autenticacao: 'sem login no protótipo' }); _save(); }
 }
 const auditar = (tipo, ref, dados) => { registrar('trilha', tipo, ref, dados); save(); };
 
@@ -4875,6 +4882,74 @@ document.addEventListener('click', e => {
     case 'pr-pacote': if (ehAdmin()) openExport('json'); break;
   }
 });
+render();
+</script>
+<script type="application/json" id="dados-ambientes">{"ambientes": [{"k": "teste", "nome": "Teste", "ramo": "develop", "url": "https://deniogatha.github.io/gestao-de-mandato/teste/", "final": "teste.dominio.com.br", "finalidade": "Onde o desenvolvedor experimenta e confere cada mudança.", "dados": "Só fictícios", "entrada": "Cada envio ao ramo develop é publicado sozinho.", "aprovacao": "Nenhuma: é o rascunho do desenvolvedor."}, {"k": "homologacao", "nome": "Homologação", "ramo": "homologacao", "url": "https://deniogatha.github.io/gestao-de-mandato/homologacao/", "final": "homolog.dominio.com.br", "finalidade": "Cópia fiel da produção, onde a empresa e o gabinete aprovam a mudança antes de ela valer.", "dados": "Fictícios ou cópia anonimizada", "entrada": "Pedido de mesclagem do develop para homologacao.", "aprovacao": "Diretor da empresa e, quando a mudança foi pedida pelo gabinete, o administrador do gabinete."}, {"k": "producao", "nome": "Produção", "ramo": "main", "url": "https://deniogatha.github.io/gestao-de-mandato/", "final": "app.dominio.com.br", "finalidade": "O sistema em uso pelos gabinetes.", "dados": "Reais (hoje: demonstração com dados fictícios)", "entrada": "Pedido de mesclagem da homologacao para main.", "aprovacao": "Diretor da empresa, depois da homologação."}], "niveis": {"Total": "accent", "Publica": "info", "Aprova": "ok", "Testa": "info", "Usa": "ok", "Leitura": "", "Emergencial": "warn", "Sem acesso": "mute"}, "papeis": [{"papel": "Desenvolvedor", "quem": "Quem programa o sistema", "teste": ["Total", "Publica direto no ramo develop e cria dados fictícios à vontade."], "homologacao": ["Publica", "Só por pedido de mesclagem. Não vê dados de cliente: usa cópia anonimizada."], "producao": ["Publica", "Só por pedido de mesclagem aprovado. Sem acesso a dados pessoais; acesso emergencial com prazo, motivo e registro na trilha."]}, {"papel": "Diretor da empresa", "quem": "Segundo administrador de todas as contas", "teste": ["Leitura", "Acompanha o que está sendo feito."], "homologacao": ["Aprova", "Revisa a mudança e aprova a ida para a produção."], "producao": ["Aprova", "Dono das contas (código, hospedagem, banco), aprova publicações e revoga acessos."]}, {"papel": "Suporte da empresa", "quem": "Atende os chamados dos gabinetes", "teste": ["Sem acesso", ""], "homologacao": ["Testa", "Reproduz problemas relatados."], "producao": ["Emergencial", "Só dentro de um chamado, com registro na trilha. Não exporta dados."]}, {"papel": "Administrador do gabinete", "quem": "Chefe de gabinete ou quem o gabinete indicar", "teste": ["Sem acesso", ""], "homologacao": ["Testa", "Aprova as mudanças pedidas pelo gabinete (níveis Profissional e Dedicado)."], "producao": ["Usa", "Administra os acessos da equipe do gabinete."]}, {"papel": "Equipe do gabinete", "quem": "Recepção, atendimento, assessoria", "teste": ["Sem acesso", ""], "homologacao": ["Testa", "Só em treinamento combinado."], "producao": ["Usa", "Conforme o perfil em Gestão › Equipe e permissões."]}, {"papel": "Visitante", "quem": "Quem faz check-in pelo QR code", "teste": ["Sem acesso", ""], "homologacao": ["Sem acesso", ""], "producao": ["Usa", "Só o formulário de check-in."]}, {"papel": "Auditoria e jurídico", "quem": "Controle interno, DPO, advogado", "teste": ["Sem acesso", ""], "homologacao": ["Sem acesso", ""], "producao": ["Leitura", "Registro de eventos e trilha de auditoria, sem alterar nada."]}], "infra": [["Ramo do código", "develop", "homologacao", "main", "Igual: os três ramos já existem."], ["Como a mudança entra", "Envio direto", "Pedido de mesclagem do develop", "Pedido de mesclagem da homologacao", "Igual. A aprovação obrigatória entra quando o diretor for adicionado ao repositório."], ["Endereço", "teste.dominio.com.br", "homolog.dominio.com.br", "app.dominio.com.br", "Pastas /teste/, /homologacao/ e a raiz do mesmo site."], ["Hospedagem", "Vercel, projeto de teste", "Vercel, projeto de homologação", "Vercel, projeto de produção", "GitHub Pages, um site com os três ambientes."], ["Banco de dados", "Supabase gratuito, separado", "Supabase de homologação, separado", "Supabase Pro em São Paulo", "Navegador de cada pessoa, com dados separados por ambiente."], ["Dados", "Fictícios", "Fictícios ou cópia anonimizada", "Reais", "Fictícios nos três."], ["Login", "Contas de teste", "Contas próprias, com segundo fator", "Segundo fator obrigatório", "Sem login: a página é pública."], ["Cópias de segurança", "Não precisa", "Não precisa", "Diária e a cada 6 horas, ou a qualquer minuto (PITR)", "Não há."], ["Registro de eventos e trilha", "Pode ser zerado", "Guardado", "Guardado, sem alteração possível", "Cadeias com hash no navegador."]]}</script>
+<script>
+/* =====================================================================
+   v13: teste, homologação e produção — faixa do ambiente e visão de acessos
+   ===================================================================== */
+const AMBS = JSON.parse(document.getElementById('dados-ambientes').textContent);
+// faixa no topo dos ambientes que não são produção (aparece também no formulário do visitante)
+if (AMBIENTE.k !== 'producao') {
+  document.querySelector('.main').insertAdjacentHTML('afterbegin', `<div class="amb-faixa amb-${AMBIENTE.k}" role="status"><b>${AMBIENTE.nome.toUpperCase()}</b><span>${AMBIENTE.k === 'teste' ? 'Ambiente do desenvolvedor. Só dados fictícios.' : 'Ambiente de aprovação. Não use dados reais.'}</span></div>`);
+  const _r13 = render; // o título da aba também mostra o ambiente
+  render = function () { _r13(); if (!document.title.startsWith('[')) document.title = `[${AMBIENTE.nome}] ${document.title}`; };
+}
+Object.assign(CLS, Object.fromEntries(Object.entries(AMBS.niveis).map(([k, v]) => [k, v === 'mute' ? '' : v])));
+function vAmbientes() {
+  const A = AMBS.ambientes, col = { teste: 'teste', homologacao: 'homologacao', producao: 'producao' };
+  const nivel = ([n, t]) => `<div class="amb-cel ${n === 'Sem acesso' ? 'nada' : ''}">${chip(n)}${t ? `<span>${esc(t)}</span>` : ''}</div>`;
+  return `<div class="wrap amb">${head('Ambientes e acessos', 'Onde cada versão do sistema roda, que dados ela tem e quem pode fazer o quê em cada uma.')}
+  <section class="amb-cards">${A.map(a => `<article class="panel amb-card ${a.k === AMBIENTE.k ? 'aqui' : ''}">
+    <div class="panel-h"><h2>${esc(a.nome)}</h2>${a.k === AMBIENTE.k ? '<span class="chip s-accent">Você está aqui</span>' : `<a href="${esc(a.url)}">Abrir</a>`}</div>
+    <div class="panel-b"><p>${esc(a.finalidade)}</p>
+      <dl class="kv"><dt>Ramo</dt><dd class="mono">${esc(a.ramo)}</dd><dt>Endereço</dt><dd><a href="${esc(a.url)}" class="mono">${esc(a.url.replace('https://', ''))}</a><span class="note"> · versão final: ${esc(a.final)}</span></dd><dt>Dados</dt><dd>${esc(a.dados)}</dd><dt>Entrada</dt><dd>${esc(a.entrada)}</dd><dt>Aprovação</dt><dd>${esc(a.aprovacao)}</dd></dl>
+    </div></article>`).join('')}</section>
+  <ol class="amb-fluxo" aria-label="Caminho de uma mudança">${A.map((a, i) => `<li><b>${esc(a.nome)}</b><span class="mono">${esc(a.ramo)}</span></li>${i < A.length - 1 ? '<li class="seta" aria-hidden="true">pedido de mesclagem →</li>' : ''}`).join('')}</ol>
+  <section class="panel"><div class="panel-h"><h2>Quem acessa o quê</h2><span class="meta">por papel, não por pessoa</span></div>
+    <div class="tablewrap amb-tab"><table><thead><tr><th>Papel</th>${A.map(a => `<th class="${a.k === AMBIENTE.k ? 'aqui' : ''}">${esc(a.nome)}</th>`).join('')}</tr></thead><tbody>
+    ${AMBS.papeis.map(p => `<tr><td><div class="t">${esc(p.papel)}</div><div class="s">${esc(p.quem)}</div></td>${A.map(a => `<td class="${a.k === AMBIENTE.k ? 'aqui' : ''}">${nivel(p[a.k])}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <div class="panel-b"><p class="note">Na produção, o acesso de cada pessoa do gabinete segue o perfil definido em <a href="#equipe">Gestão › Equipe e permissões</a>. Todo acesso emergencial e toda exportação entram na trilha de auditoria.</p></div></section>
+  <section class="panel"><div class="panel-h"><h2>Infraestrutura de cada ambiente</h2><span class="meta">versão final e como está hoje</span></div>
+    <div class="tablewrap amb-tab"><table><thead><tr><th>Item</th>${A.map(a => `<th>${esc(a.nome)}</th>`).join('')}<th class="hoje">Hoje, no protótipo</th></tr></thead><tbody>
+    ${AMBS.infra.map(r => `<tr><td class="t">${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td class="hoje">${esc(r[4])}</td></tr>`).join('')}
+    </tbody></table></div></section>
+  <section class="panel"><div class="panel-h"><h2>Limites de hoje</h2></div><div class="panel-b"><ul class="pr-pol">
+    <li>Os três endereços são públicos e usam dados fictícios. A produção atual é a demonstração do protótipo.</li>
+    <li>Cada ambiente guarda seus dados separados no navegador: o que for feito em Teste não aparece em Homologação nem em Produção.</li>
+    <li>O repositório tem uma pessoa só, e o GitHub não deixa o autor aprovar o próprio pedido de mesclagem. A aprovação obrigatória fica em zero até o diretor entrar como colaborador. Depois disso ela sobe para um em <span class="mono">main</span> e <span class="mono">homologacao</span>.</li>
+    <li>A separação de acessos por papel vale para a versão final, com login, segundo fator e um banco para cada ambiente.</li>
+  </ul></div></section></div>`;
+}
+ROUTES.ambientes = { t: 'Ambientes e acessos', g: 'Gestão', r: vAmbientes };
+{ const G = AREAS.find(a => a.k === 'gestao'); if (!G.p.includes('ambientes')) G.p.splice(G.p.indexOf('equipe') + 1, 0, 'ambientes'); }
+PAGE_DESC.ambientes = 'Teste, homologação, produção e quem acessa cada um';
+const ambCss = document.createElement('style');
+ambCss.textContent = `
+.amb-faixa{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:6px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));font-size:12.5px;text-align:center;flex:none}
+.amb-faixa b{letter-spacing:.08em}
+.amb-teste{background:var(--warn);color:var(--bg)}
+.amb-homologacao{background:var(--info);color:var(--bg)}
+.amb-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.amb-card .panel-b{display:grid;gap:12px}
+.amb-card.aqui{border-color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
+.amb-card dl.kv{grid-template-columns:86px minmax(0,1fr);font-size:12.5px}
+.amb-fluxo{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.amb-fluxo li:not(.seta){display:grid;gap:1px;border:1px solid var(--line-strong);background:var(--surface);border-radius:var(--r);padding:8px 14px}
+.amb-fluxo li span{font-size:12px;color:var(--muted)}
+.amb-fluxo .seta{font-size:12px;color:var(--muted)}
+.amb-tab td{vertical-align:top}
+.amb-tab th.aqui,.amb-tab td.aqui{background:var(--accent-soft)}
+.amb-tab th.aqui{color:var(--accent)}
+.amb-tab th.hoje,.amb-tab td.hoje{color:var(--muted);font-size:12.5px}
+.amb-cel{display:grid;gap:4px;justify-items:start;min-width:150px}
+.amb-cel span{font-size:12.5px;color:var(--fg)}
+.amb-cel.nada .chip{opacity:.7}
+@media (max-width:1000px){.amb-cards{grid-template-columns:minmax(0,1fr)}}
+`;
+document.head.appendChild(ambCss);
 render();
 </script>
 <script>

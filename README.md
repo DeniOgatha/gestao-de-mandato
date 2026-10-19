@@ -15,3 +15,7 @@ A recepção com check-in por QR code (Atendimento › Recepção) também é si
 Resumo de implantação para a diretoria (infraestrutura, custos estimados, etapas e segurança): pasta `implantacao/`, com versão em PDF.
 
 A página Atendimento › Presença reúne horários de pico, atendidos, quem saiu sem atendimento, mensagens enviadas, consulta por pessoa e declaração de comparecimento, com exportação em Excel e PDF. Cada criação, correção e cancelamento vira um evento numa cadeia com hash SHA-256, e exportações, consultas e mudanças de permissão vão para uma trilha de auditoria separada. No protótipo tudo fica no navegador e o horário é o do aparelho; os CPFs de exemplo são inválidos de propósito.
+
+## Ambientes
+
+O site publica três ambientes a partir de três ramos: `develop` em [/teste/](https://deniogatha.github.io/gestao-de-mandato/teste/), `homologacao` em [/homologacao/](https://deniogatha.github.io/gestao-de-mandato/homologacao/) e `main` na raiz (produção). Uma mudança segue `develop` → pedido de mesclagem → `homologacao` → pedido de mesclagem → `main`. Quem acessa o quê em cada ambiente está em [AMBIENTES.md](AMBIENTES.md) e na tela Gestão › Ambientes e acessos.
