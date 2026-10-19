@@ -1694,6 +1694,7 @@ function openContato(id) {
         <dt>Telefone</dt><dd class="mono">${esc(c.telefone)}</dd>
         <dt>E-mail</dt><dd>${esc(c.email || '—')}</dd>
         <dt>Bairro</dt><dd>${esc(c.bairro)}</dd>
+        ${c.endereco ? `<dt>Endereço</dt><dd>${esc(endTxt(c.endereco))}</dd>` : ''}
         <dt>Nascimento</dt><dd class="num">${fD(c.nascimento)}${b ? ` · ${b.dias === 0 ? 'aniversário hoje' : 'faz ' + b.idade + ' anos em ' + b.dias + ' dias'}` : ''}</dd>
         <dt>Origem</dt><dd>${esc(c.origem)}</dd>
         <dt>Indicado por</dt><dd>${c.indicadoPor ? `<a href="#rede" data-act="open" data-type="contato" data-id="${c.indicadoPor}">${esc(cName(c.indicadoPor))}</a>` : '—'}</dd>
@@ -3461,6 +3462,9 @@ const fTel = d => d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.sli
 const waLink = (tel, txt) => `https://wa.me/55${soDig(tel)}?text=${encodeURIComponent(txt)}`;
 const msgVisita = v => (D.auto.visita ? D.auto.visita.msg : MSG_VISITA).replace(/\{nome\}/g, first(cName(v.contato))).replace(/\{atendente\}/g, first(mName(v.atendente))).replace(/\{protocolo\}/g, v.protocolo);
 const visitasDe = cid => D.visitas.filter(v => v.contato === cid).length;
+const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+const cepFmt = d => d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5, 8)}` : d;
+const endTxt = e => [`${e.rua || 'Rua não informada'}${e.numero ? ', ' + e.numero : ''}${e.complemento ? ' (' + e.complemento + ')' : ''}`, e.bairro, `${e.cidade}/${e.uf}`, e.cep ? 'CEP ' + e.cep : ''].filter(Boolean).join(' · ');
 // quem costuma atender cada assunto (a recepção pode trocar)
 const SUGERE = { 'Pedido de providência': 5, 'Orientação jurídica': 4, 'Convite para evento': 1, 'Reunião política': 1, 'Busca por emprego': 2, 'Agradecimento': 2 };
 
@@ -3576,7 +3580,7 @@ async function pdfVisita(vid) {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); col(MUT); doc.text(pdfTxt(`${DIA[dv.getDay()]}, ${dv.getDate()} de ${MES[dv.getMonth()]} de ${dv.getFullYear()}`), M, y); y += 8;
   const nV = D.visitas.filter(x => x.contato === v.contato && (x.data < v.data || (x.data === v.data && x.id <= v.id))).length;
   head('Visitante');
-  kv([['Nome', c.nome || k.nome], ['Celular (WhatsApp)', c.telefone || k.telefone], ['Bairro', c.bairro || k.bairro], ['Relação com o gabinete', nV <= 1 ? 'Primeira visita' : `${nV}ª visita · contato desde ${fD(c.criadoEm)}`]]);
+  kv([['Nome', c.nome || k.nome], ['Celular (WhatsApp)', c.telefone || k.telefone], ['Endereço', (k.endereco || c.endereco) ? endTxt(k.endereco || c.endereco) : (c.bairro || k.bairro)], ['Relação com o gabinete', nV <= 1 ? 'Primeira visita' : `${nV}ª visita · contato desde ${fD(c.criadoEm)}`]]);
   head('Atendimento');
   kv([['Senha', k.senha ? pad(k.senha).padStart(3, '0') : '-'], ['Data', fD(v.data)],
     ['Check-in', k.chegada ? fT(k.chegada) : '-'], ['Início do atendimento', k.inicio ? fT(k.inicio) : '-'],
@@ -3689,7 +3693,7 @@ function openConcluir(id) {
   openDrawer(`<form id="ck-fim" data-id="${id}" novalidate>
     <div class="dh"><div><p class="eyebrow">Concluir atendimento · senha ${pad(k.senha).padStart(3, '0')}</p><h2>${esc(k.nome)}</h2></div><button type="button" class="icon-btn" data-act="drawer-close" aria-label="Fechar">×</button></div>
     <div class="db">
-      <dl class="kv"><dt>Motivo</dt><dd>${esc(k.motivo)}</dd>${k.relato ? `<dt>Relato no check-in</dt><dd>${esc(k.relato)}</dd>` : ''}<dt>Horários</dt><dd class="num">check-in ${fT(k.chegada)} · início ${fT(k.inicio)} · espera de ${fMin(minEntre(k.chegada, k.inicio))}</dd><dt>Celular</dt><dd class="mono">${esc(c.telefone || k.telefone)}</dd></dl>
+      <dl class="kv"><dt>Motivo</dt><dd>${esc(k.motivo)}</dd>${k.relato ? `<dt>Relato no check-in</dt><dd>${esc(k.relato)}</dd>` : ''}<dt>Horários</dt><dd class="num">check-in ${fT(k.chegada)} · início ${fT(k.inicio)} · espera de ${fMin(minEntre(k.chegada, k.inicio))}</dd><dt>Celular</dt><dd class="mono">${esc(c.telefone || k.telefone)}</dd>${k.endereco ? `<dt>Endereço</dt><dd>${esc(endTxt(k.endereco))}</dd>` : ''}</dl>
       <div class="fgrid">
         <div class="fld w2"><label for="ck-atendente">Atendido por</label><select id="ck-atendente">${opts(D.equipe.map(m => [m.id, `${m.nome} · ${m.cargo}`]), k.atendente)}</select></div>
         <div class="fld w2"><label for="ck-resumo">O que foi discutido *</label><textarea id="ck-resumo" placeholder="Ex.: Relatou falta de vaga na creche; mostrou a inscrição feita em agosto."></textarea></div>
@@ -3764,12 +3768,22 @@ function vCheckin() {
     }
   }
   const v = st.v || {};
+  CK_CEP = { seq: 0, seq2: 0, manual: false, ultimo: '', lista: [] };
   return `<div class="kiosk-wrap"><form class="kiosk-card" id="ck-form" novalidate>${marca}
     <div><h1>Faça seu check-in</h1><p class="sub">Leva menos de um minuto. Depois é só aguardar: chamamos pela senha.</p></div>
     <div class="fgrid">
       <div class="fld w2"><label for="ckf-nome">Nome completo *</label><input id="ckf-nome" autocomplete="name" value="${esc(v.nome || '')}"></div>
       <div class="fld w2"><label for="ckf-tel">Celular com WhatsApp *</label><input id="ckf-tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(15) 99999-9999" value="${esc(v.tel || '')}"></div>
-      <div class="fld w2"><label for="ckf-bairro">Bairro *</label><select id="ckf-bairro"><option value="">Selecione</option>${[...BN, 'Outra cidade'].map(b => `<option ${v.bairro === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
+      <div class="fld w2"><label for="ckf-cep">CEP *</label><input id="ckf-cep" inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" maxlength="9"><span class="ck-cep-st" id="ckf-cep-st" aria-live="polite">Digite o CEP e o endereço aparece sozinho.</span><button type="button" class="linkbtn ck-semcep" data-act="ck-semcep">Não sei o CEP: digitar o endereço</button></div>
+      <div class="ck-end" id="ckf-end" hidden>
+        <div class="fld"><label for="ckf-cidade">Cidade *</label><input id="ckf-cidade" autocomplete="address-level2"></div>
+        <div class="fld"><label for="ckf-uf">Estado *</label><select id="ckf-uf">${UFS.map(u => `<option ${u === 'SP' ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+        <div class="fld ck-full"><label for="ckf-rua">Rua</label><input id="ckf-rua" autocomplete="address-line1"></div>
+        <div class="ck-sug" id="ckf-sug" hidden></div>
+        <div class="fld"><label for="ckf-num">Número</label><input id="ckf-num" inputmode="numeric" placeholder="s/n"></div>
+        <div class="fld"><label for="ckf-comp">Complemento</label><input id="ckf-comp" placeholder="Apto, bloco"></div>
+        <div class="fld ck-full"><label for="ckf-bairro">Bairro *</label><input id="ckf-bairro" list="ckf-bairros" autocomplete="off"><datalist id="ckf-bairros">${BN.map(b => `<option value="${esc(b)}">`).join('')}</datalist></div>
+      </div>
       <div class="fld w2"><label for="ckf-motivo">Assunto *</label><select id="ckf-motivo"><option value="">Selecione</option>${V_MOTIVOS.map(m => `<option ${v.motivo === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></div>
       <div class="fld w2"><label for="ckf-relato">Conte em poucas palavras (opcional)</label><textarea id="ckf-relato" rows="3" placeholder="Ex.: falta de vaga na creche para meu filho">${esc(v.relato || '')}</textarea></div>
       <label class="ck-consent w2" for="ckf-lgpd"><input type="checkbox" id="ckf-lgpd" ${v.lgpd ? 'checked' : ''}><span>Autorizo o gabinete a registrar esta visita e a falar comigo pelo WhatsApp sobre o meu atendimento. *</span></label>
@@ -3822,17 +3836,19 @@ document.addEventListener('submit', e => {
   const f = e.target;
   if (f.id === 'ck-form') {
     e.preventDefault();
-    const nome = $('#ckf-nome').value.trim().replace(/\s+/g, ' '), tel = soDig($('#ckf-tel').value), bairro = $('#ckf-bairro').value, motivo = $('#ckf-motivo').value, relato = $('#ckf-relato').value.trim(), lgpd = $('#ckf-lgpd').checked;
-    ui('ck').v = { nome, tel: $('#ckf-tel').value, bairro, motivo, relato, lgpd };
-    const err = !nome || nome.split(' ').length < 2 ? 'Escreva seu nome e sobrenome.' : tel.length < 10 || tel.length > 11 ? 'Confira o celular: DDD e número, por exemplo (15) 99999-9999.' : !bairro ? 'Escolha o seu bairro.' : !motivo ? 'Escolha o assunto da visita.' : !lgpd ? 'Para fazer o check-in, marque a autorização no fim do formulário.' : '';
+    const nome = $('#ckf-nome').value.trim().replace(/\s+/g, ' '), tel = soDig($('#ckf-tel').value), cepD = $('#ckf-cep').value.replace(/\D/g, ''), motivo = $('#ckf-motivo').value, relato = $('#ckf-relato').value.trim(), lgpd = $('#ckf-lgpd').checked;
+    const val = i => $('#' + i).value.trim().replace(/\s+/g, ' ');
+    const end = { cep: cepD.length === 8 ? cepFmt(cepD) : '', rua: val('ckf-rua'), numero: val('ckf-num'), complemento: val('ckf-comp'), bairro: val('ckf-bairro'), cidade: val('ckf-cidade'), uf: $('#ckf-uf').value }, bairro = end.bairro;
+    ui('ck').v = { nome, tel: $('#ckf-tel').value, motivo, relato, lgpd };
+    const err = !nome || nome.split(' ').length < 2 ? 'Escreva seu nome e sobrenome.' : tel.length < 10 || tel.length > 11 ? 'Confira o celular: DDD e número, por exemplo (15) 99999-9999.' : cepD.length !== 8 && !CK_CEP.manual ? 'Digite o CEP com 8 números ou toque em “Não sei o CEP”.' : $('#ckf-end').hidden ? 'Aguarde a busca do CEP ou digite o endereço.' : !bairro || !end.cidade ? 'Complete o endereço: bairro e cidade.' : !motivo ? 'Escolha o assunto da visita.' : !lgpd ? 'Para fazer o check-in, marque a autorização no fim do formulário.' : '';
     if (err) { const p = $('#ckf-err'); p.textContent = err; p.hidden = false; return; }
     let c = D.contatos.find(x => soDig(x.telefone) === tel), novo = false;
     if (!c) {
-      c = { id: nextId('contatos'), nome, telefone: fTel(tel), email: '', nascimento: '', bairro, categoria: 'Eleitor', origem: 'Visita ao gabinete', indicadoPor: null, etiquetas: [], criadoEm: hoje(), obs: 'Cadastrado no check-in da recepção.' };
+      c = { id: nextId('contatos'), nome, telefone: fTel(tel), email: '', nascimento: '', bairro, endereco: end, categoria: 'Eleitor', origem: 'Visita ao gabinete', indicadoPor: null, etiquetas: [], criadoEm: hoje(), obs: 'Cadastrado no check-in da recepção.' };
       D.contatos.push(c); novo = true;
     }
-    c.lgpd = agora();
-    const H = hoje(), k = { id: nextId('checkins'), senha: D.checkins.filter(x => x.data === H).length + 1, data: H, chegada: agora(), contato: c.id, nome: c.nome, telefone: c.telefone, bairro: c.bairro, motivo, relato, lgpd, novo: novo || !visitasDe(c.id), status: 'Chegou', atendente: null, filaEm: null, inicio: null, fim: null, visita: null, recebidoPor: RECEPCIONISTA };
+    c.lgpd = agora(); c.endereco = end; c.bairro = bairro;
+    const H = hoje(), k = { id: nextId('checkins'), senha: D.checkins.filter(x => x.data === H).length + 1, data: H, chegada: agora(), contato: c.id, nome: c.nome, telefone: c.telefone, bairro, endereco: end, motivo, relato, lgpd, novo: novo || !visitasDe(c.id), status: 'Chegou', atendente: null, filaEm: null, inicio: null, fim: null, visita: null, recebidoPor: RECEPCIONISTA };
     D.checkins.push(k); save();
     Object.assign(ui('ck'), { done: k.id, v: {} }); render();
     clearTimeout(window.ckT); window.ckT = setTimeout(() => { if (cur() === 'checkin' && ui('ck').done === k.id) { ui('ck').done = 0; render(); } }, 25000);
@@ -3858,9 +3874,76 @@ document.addEventListener('submit', e => {
     openVisitaReg(v.id, `Atendimento concluído. Registro ${esc(v.protocolo)} gerado${dm ? `, demanda ${esc(dm.protocolo)} aberta` : ''}${v.waEm ? ' e agradecimento enviado pelo WhatsApp' : ''}.`);
   }
 });
+/* ---------- CEP: preenchimento automático e busca por rua ---------- */
+let CK_CEP = { seq: 0, seq2: 0, manual: false, ultimo: '', lista: [] };
+const getT = (url, ms = 6000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, { signal: c.signal }).finally(() => clearTimeout(t)); };
+async function buscaCep(cep) {
+  try { const r = await getT(`https://viacep.com.br/ws/${cep}/json/`); if (r.ok) { const j = await r.json(); return j.erro ? { nao: 1 } : { rua: j.logradouro, bairro: j.bairro, cidade: j.localidade, uf: j.uf }; } } catch (e) {}
+  try { const r = await getT(`https://brasilapi.com.br/api/cep/v1/${cep}`); if (r.status === 404) return { nao: 1 }; if (r.ok) { const j = await r.json(); return { rua: j.street, bairro: j.neighborhood, cidade: j.city, uf: j.state }; } } catch (e) {}
+  return null; // sem conexão ou consulta bloqueada
+}
+async function buscaRua(uf, cidade, rua) {
+  try { const r = await getT(`https://viacep.com.br/ws/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}/${encodeURIComponent(rua)}/json/`); if (r.ok) { const j = await r.json(); return Array.isArray(j) ? j.slice(0, 8) : []; } } catch (e) {}
+  return null;
+}
+const setv = (id, v) => { const el = $('#' + id); if (el) el.value = v || ''; };
+const cepSt = (txt, cls = '') => { const st = $('#ckf-cep-st'); if (st) { st.textContent = txt; st.className = 'ck-cep-st ' + cls; } };
+async function cepLookup(d) {
+  if (CK_CEP.ultimo === d) return;
+  CK_CEP.ultimo = d; const seq = ++CK_CEP.seq;
+  cepSt('Buscando o endereço…');
+  const r = await buscaCep(d);
+  if (seq !== CK_CEP.seq || !$('#ckf-end')) return;
+  $('#ckf-end').hidden = false;
+  if (r && !r.nao) {
+    CK_CEP.manual = false; $('#ckf-sug').hidden = true;
+    setv('ckf-rua', r.rua); setv('ckf-bairro', r.bairro); setv('ckf-cidade', r.cidade); $('#ckf-uf').value = UFS.includes(r.uf) ? r.uf : 'SP';
+    cepSt(r.rua ? 'Endereço encontrado. Confira e informe o número.' : 'Esse CEP vale para a cidade toda: complete a rua e o bairro.', 'ok');
+    (r.rua ? $('#ckf-num') : $('#ckf-rua')).focus();
+  } else {
+    CK_CEP.manual = true;
+    cepSt(r ? 'CEP não encontrado. Confira os números ou digite o endereço abaixo.' : 'Não foi possível consultar o CEP agora. Digite o endereço abaixo.', 'warn');
+    $('#ckf-rua').focus();
+  }
+}
+async function sugerirEnd() {
+  const box = $('#ckf-sug'); if (!box || !CK_CEP.manual) return;
+  const uf = $('#ckf-uf').value, cid = $('#ckf-cidade').value.trim(), rua = $('#ckf-rua').value.trim();
+  if (cid.length < 3 || rua.length < 3) { box.hidden = true; return; }
+  const seq = ++CK_CEP.seq2; box.hidden = false; box.innerHTML = '<p class="note">Procurando endereços…</p>';
+  const L = await buscaRua(uf, cid, rua);
+  if (seq !== CK_CEP.seq2) return;
+  if (!L) { box.innerHTML = '<p class="note">Sem conexão para procurar o CEP. Pode seguir sem ele.</p>'; return; }
+  if (!L.length) { box.innerHTML = '<p class="note">Nenhum endereço encontrado com esse nome. Pode seguir sem o CEP.</p>'; return; }
+  CK_CEP.lista = L;
+  box.innerHTML = '<p class="note">Escolha o seu endereço para preencher o CEP:</p>' + L.map((x, i) => `<button type="button" data-act="ck-sug" data-i="${i}"><b>${esc(x.logradouro)}${x.complemento ? ` <small>${esc(x.complemento)}</small>` : ''}</b><span>${esc(x.bairro || 'Bairro não informado')} · ${esc(x.localidade)}/${esc(x.uf)} · <span class="mono">${esc(x.cep)}</span></span></button>`).join('');
+}
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'ckf-cep') {
+    const d = t.value.replace(/\D/g, '').slice(0, 8); t.value = cepFmt(d);
+    if (d.length === 8) cepLookup(d);
+    else { CK_CEP.ultimo = ''; CK_CEP.seq++; if (!CK_CEP.manual) cepSt('Digite o CEP e o endereço aparece sozinho.'); }
+  }
+  else if (t.id === 'ckf-rua' || t.id === 'ckf-cidade') { clearTimeout(CK_CEP.t); CK_CEP.t = setTimeout(sugerirEnd, 450); }
+});
+document.addEventListener('change', e => { if (e.target.id === 'ckf-uf') sugerirEnd(); });
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act="ck-semcep"],[data-act="ck-sug"]'); if (!a) return;
+  if (a.dataset.act === 'ck-semcep') {
+    CK_CEP.manual = true; CK_CEP.seq++; $('#ckf-end').hidden = false;
+    cepSt('Preencha cidade e rua: mostramos os CEPs possíveis para você escolher.');
+    a.hidden = true; $('#ckf-cidade').focus();
+  } else {
+    const x = CK_CEP.lista[+a.dataset.i]; if (!x) return;
+    const d = x.cep.replace(/\D/g, ''); CK_CEP.ultimo = d; CK_CEP.seq++;
+    setv('ckf-cep', cepFmt(d)); setv('ckf-rua', x.logradouro); setv('ckf-bairro', x.bairro); setv('ckf-cidade', x.localidade); $('#ckf-uf').value = x.uf;
+    $('#ckf-sug').hidden = true; cepSt('Endereço escolhido. Informe o número.', 'ok'); $('#ckf-num').focus();
+  }
+});
 window.addEventListener('hashchange', () => { if (['checkin', 'automacoes'].includes(cur()) && !$('#drawer').hidden) closeDrawer(); });
 // fila e formulário abertos em abas diferentes do mesmo navegador
-window.addEventListener('storage', e => { if (e.key === KEY && e.newValue) { try { D = JSON.parse(e.newValue); if ($('#drawer').hidden) render(); else renderNav(); } catch (err) {} } });
+window.addEventListener('storage', e => { if (e.key === KEY && e.newValue) { try { D = JSON.parse(e.newValue); if ($('#drawer').hidden && cur() !== 'checkin') render(); else renderNav(); } catch (err) {} } });
 setInterval(() => { if (cur() === 'recepcao' && $('#drawer').hidden && !(document.activeElement && document.activeElement.matches('select,input,textarea'))) render(); }, 30000);
 
 const ckCss = document.createElement('style');
@@ -3878,6 +3961,17 @@ ckCss.textContent = `
 .ck-vazio{padding:10px 4px}
 .ck a.btn,.drawer a.btn,.kiosk-card a.btn{text-decoration:none}
 .ck-swrow{grid-column:1/-1;display:grid;gap:5px}
+.ck-end{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.ck-cep-st{font-size:12.5px;color:var(--muted)}
+.ck-cep-st.ok{color:var(--ok)}
+.ck-cep-st.warn{color:var(--warn)}
+.ck-semcep{justify-self:start;font-size:13px;padding:4px 0}
+.ck-end .ck-full{grid-column:1/-1}
+.ck-sug{grid-column:1/-1;display:grid;gap:6px}
+.ck-sug button{display:grid;gap:2px;text-align:left;border:1px solid var(--line-strong);background:var(--surface);color:var(--fg);border-radius:var(--r);padding:9px 12px;cursor:pointer;min-height:44px}
+.ck-sug button:hover,.ck-sug button:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
+.ck-sug button small{font-weight:400;color:var(--muted)}
+.ck-sug button>span{font-size:12.5px;color:var(--muted)}
 .ck .kanban{grid-auto-columns:minmax(250px,1fr)}
 .ck-aviso{background:var(--ok-soft);color:var(--ok);padding:10px 12px;border-radius:var(--r);font-weight:500}
 .ck-msg{background:var(--surface-2);padding:10px 12px;border-radius:var(--r);white-space:pre-wrap;max-width:60ch}
