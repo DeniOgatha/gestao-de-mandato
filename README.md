@@ -18,4 +18,4 @@ A página Atendimento › Presença reúne horários de pico, atendidos, quem sa
 
 ## Ambientes
 
-O site publica três ambientes a partir de três ramos: `develop` em [/teste/](https://deniogatha.github.io/gestao-de-mandato/teste/), `homologacao` em [/homologacao/](https://deniogatha.github.io/gestao-de-mandato/homologacao/) e `main` na raiz (produção). Uma mudança segue `develop` → pedido de mesclagem → `homologacao` → pedido de mesclagem → `main`. Quem acessa o quê em cada ambiente está em [AMBIENTES.md](AMBIENTES.md) e na tela Gestão › Ambientes e acessos.
+O site publica três ambientes a partir de três ramos: `develop` em [/teste/](https://deniogatha.github.io/gestao-de-mandato/teste/), `homologacao` em [/homologacao/](https://deniogatha.github.io/gestao-de-mandato/homologacao/) e `main` na raiz (produção). Uma mudança segue `develop` → pedido de mesclagem → `homologacao` → pedido de mesclagem → `main`. Quem acessa o quê em cada ambiente está em [AMBIENTES.md](AMBIENTES.md) e na tela Configurações › Ambientes e acessos.
