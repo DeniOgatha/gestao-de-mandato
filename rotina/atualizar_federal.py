@@ -91,7 +91,9 @@ def norm(s):
 
 html = open(IDX, encoding='utf-8').read()
 PARL = json.loads(bloco(html, 'dados-parl'))
-PESSOAS = PARL['pessoas']
+ELEITOS = json.loads(bloco(html, 'dados-eleitos') or 'null')  # eleitos do NOVO de 2024 e 2026 (rotina/gerar_eleitos.py)
+_ja = {p['sq'] for p in PARL['pessoas']}
+PESSOAS = PARL['pessoas'] + [p for p in (ELEITOS or {}).get('pessoas', []) if not p.get('ja') and p['sq'] not in _ja]
 DEPS = sorted({p['camara']['id'] for p in PESSOAS if p.get('camara')})
 DSET = set(DEPS)
 CAM_ANT, FED_ANT = anterior('camara.b64', 'dados-camara'), anterior('federal.b64', 'dados-federal')
@@ -252,7 +254,8 @@ def nome_busca(p):
     return p['urna'].title()
 
 def buscar(p):
-    q = urllib.parse.quote(f'"{nome_busca(p)}" when:60d')
+    # vereadores e prefeitos têm nomes comuns: a busca leva o município junto
+    q = urllib.parse.quote(f'"{nome_busca(p)}"' + (f' "{p["mun"]}"' if p.get('mun') else '') + ' when:60d')
     try:
         xml = baixar(f'https://news.google.com/rss/search?q={q}&hl=pt-BR&gl=BR&ceid=BR:pt-419', tentativas=3)
     except Exception:
