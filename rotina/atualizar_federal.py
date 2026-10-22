@@ -248,6 +248,11 @@ for fonte, nome in (('c', 'Câmara'), ('s', 'Senado')):
 CORTE = (HOJE - timedelta(days=60)).isoformat()
 NOT_ANT = (FED_ANT or {}).get('noticias') or PARL.get('noticias') or {}
 
+UF_NOME = {'AC': 'Acre', 'AL': 'Alagoas', 'AM': 'Amazonas', 'AP': 'Amapá', 'BA': 'Bahia', 'CE': 'Ceará', 'DF': 'Distrito Federal', 'ES': 'Espírito Santo',
+           'GO': 'Goiás', 'MA': 'Maranhão', 'MG': 'Minas Gerais', 'MS': 'Mato Grosso do Sul', 'MT': 'Mato Grosso', 'PA': 'Pará', 'PB': 'Paraíba',
+           'PE': 'Pernambuco', 'PI': 'Piauí', 'PR': 'Paraná', 'RJ': 'Rio de Janeiro', 'RN': 'Rio Grande do Norte', 'RO': 'Rondônia', 'RR': 'Roraima',
+           'RS': 'Rio Grande do Sul', 'SC': 'Santa Catarina', 'SE': 'Sergipe', 'SP': 'São Paulo', 'TO': 'Tocantins'}
+
 def nome_busca(p):
     for k in ('camara', 'senado'):
         if p.get(k) and p[k].get('nome'): return p[k]['nome']
@@ -255,7 +260,8 @@ def nome_busca(p):
 
 def buscar(p):
     # vereadores e prefeitos têm nomes comuns: a busca leva o município junto
-    q = urllib.parse.quote(f'"{nome_busca(p)}"' + (f' "{p["mun"]}"' if p.get('mun') else '') + ' when:60d')
+    lugar = p.get('mun') or (UF_NOME.get(p['uf'], '') if p.get('ano') else '')  # eleitos de 2026 sem mandato federal: o estado
+    q = urllib.parse.quote(f'"{nome_busca(p)}"' + (f' "{lugar}"' if lugar else '') + ' when:60d')
     try:
         xml = baixar(f'https://news.google.com/rss/search?q={q}&hl=pt-BR&gl=BR&ceid=BR:pt-419', tentativas=3)
     except Exception:

@@ -27,7 +27,12 @@ MINUSC = {'da', 'de', 'do', 'das', 'dos', 'e', "d'"}
 
 
 def tc(s):
-    return ' '.join(w if w in MINUSC and i else w.capitalize() for i, w in enumerate((s or '').lower().split()))
+    """Nome próprio: 'SANTA BÁRBARA D'OESTE' -> 'Santa Bárbara d'Oeste', 'PAU-BRASIL' -> 'Pau-Brasil'."""
+    def palavra(w, i):
+        if w in MINUSC and i: return w
+        if re.match(r"d['’]\w", w): return w[:2] + palavra(w[2:], 1)
+        return '-'.join(x if (x in MINUSC and j) else x[:1].upper() + x[1:] for j, x in enumerate(w.split('-')))
+    return ' '.join(palavra(w, i) for i, w in enumerate((s or '').lower().split()))
 
 
 def local_ou_baixa(rel, url):
