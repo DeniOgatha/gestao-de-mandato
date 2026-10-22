@@ -91,7 +91,9 @@ def norm(s):
 
 html = open(IDX, encoding='utf-8').read()
 PARL = json.loads(bloco(html, 'dados-parl'))
-PESSOAS = PARL['pessoas']
+ELEITOS = json.loads(bloco(html, 'dados-eleitos') or 'null')  # eleitos do NOVO de 2024 e 2026 (rotina/gerar_eleitos.py)
+_ja = {p['sq'] for p in PARL['pessoas']}
+PESSOAS = PARL['pessoas'] + [p for p in (ELEITOS or {}).get('pessoas', []) if not p.get('ja') and p['sq'] not in _ja]
 DEPS = sorted({p['camara']['id'] for p in PESSOAS if p.get('camara')})
 DSET = set(DEPS)
 CAM_ANT, FED_ANT = anterior('camara.b64', 'dados-camara'), anterior('federal.b64', 'dados-federal')
@@ -246,13 +248,20 @@ for fonte, nome in (('c', 'Câmara'), ('s', 'Senado')):
 CORTE = (HOJE - timedelta(days=60)).isoformat()
 NOT_ANT = (FED_ANT or {}).get('noticias') or PARL.get('noticias') or {}
 
+UF_NOME = {'AC': 'Acre', 'AL': 'Alagoas', 'AM': 'Amazonas', 'AP': 'Amapá', 'BA': 'Bahia', 'CE': 'Ceará', 'DF': 'Distrito Federal', 'ES': 'Espírito Santo',
+           'GO': 'Goiás', 'MA': 'Maranhão', 'MG': 'Minas Gerais', 'MS': 'Mato Grosso do Sul', 'MT': 'Mato Grosso', 'PA': 'Pará', 'PB': 'Paraíba',
+           'PE': 'Pernambuco', 'PI': 'Piauí', 'PR': 'Paraná', 'RJ': 'Rio de Janeiro', 'RN': 'Rio Grande do Norte', 'RO': 'Rondônia', 'RR': 'Roraima',
+           'RS': 'Rio Grande do Sul', 'SC': 'Santa Catarina', 'SE': 'Sergipe', 'SP': 'São Paulo', 'TO': 'Tocantins'}
+
 def nome_busca(p):
     for k in ('camara', 'senado'):
         if p.get(k) and p[k].get('nome'): return p[k]['nome']
     return p['urna'].title()
 
 def buscar(p):
-    q = urllib.parse.quote(f'"{nome_busca(p)}" when:60d')
+    # vereadores e prefeitos têm nomes comuns: a busca leva o município junto
+    lugar = p.get('mun') or (UF_NOME.get(p['uf'], '') if p.get('ano') else '')  # eleitos de 2026 sem mandato federal: o estado
+    q = urllib.parse.quote(f'"{nome_busca(p)}"' + (f' "{lugar}"' if lugar else '') + ' when:60d')
     try:
         xml = baixar(f'https://news.google.com/rss/search?q={q}&hl=pt-BR&gl=BR&ceid=BR:pt-419', tentativas=3)
     except Exception:
