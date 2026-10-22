@@ -2734,7 +2734,7 @@ document.addEventListener('click', e => {
   const k = a.dataset.k;
   switch (a.dataset.act) {
     case 'mp-sel': D.meuParl = k; save(); Object.assign(ui('mp'), { q: '', lim: 25 }); render(); break;
-    case 'mp-go': D.meuParl = k; save(); location.hash = 'federal'; break;
+    case 'mp-go': { const q = acharParl(k, (MEUS.find(m => m.k === k) || {}).uf) || PP.find(x => norm(x.urna) === norm(k)); if (q) { ui('ficha', { sq: '' }).sq = q.sq; location.hash = 'ficha'; } break; }
     case 'mp-ord': ui('mp').ord = k; render(); break;
     case 'mp-mais': ui('mp').lim += 50; render(); break;
     case 'mp-cam': ui('mp').cam = k; render(); break;
@@ -2828,7 +2828,7 @@ function perfil(p, ctx) {
   return `<section class="panel"><div class="panel-b" style="padding-top:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
       ${fotoTag(p, 72)}
       <div style="flex:1;min-width:200px"><h2 style="font-size:21px">${esc(nomeP(p))}</h2><p class="note">${esc(tc(p.civil))}</p><p style="margin-top:4px">${esc(p.cargo)} · ${UF_NOME[p.uf] || esc(p.uf)} · <b>${esc(p.partido)}</b> · número <span class="mono">${esc(p.numero)}</span></p></div>
-      <div style="display:grid;gap:8px;justify-items:end">${chipSit(p.sit)}${ctx === 'ficha' ? (D.meuParl === p.sq ? '<span class="note">É o seu parlamentar</span>' : `<button type="button" class="btn sm" data-act="pf-meu" data-k="${p.sq}">Definir como meu parlamentar</button>`) : ''}</div>
+      <div style="display:grid;gap:8px;justify-items:end">${chipSit(p.sit)}${ctx === 'ficha' && D.meuParl === p.sq ? '<span class="note">Parlamentar deste gabinete</span>' : ''}</div>
     </div></section>
     <section class="kpis" style="grid-template-columns:repeat(${kpis.length},minmax(0,1fr))">${kpis.map(([l, v, d]) => `<div class="kpi"><span class="l">${l}</span><span class="v">${v}</span><span class="d">${d}</span></div>`).join('')}</section>
     ${disputa || senado ? `<div class="grid-2">${news}${disputa || senado}</div>` : news}
@@ -2972,7 +2972,7 @@ const AREAS = [
   { k: 'elei', t: 'Eleitoral', ic: 'chart', d: 'Resultados, votos e eleitorado', p: ['senado-2026', 'mapa-votos', 'comparar', 'eleitorado', 'resultados'] },
   { k: 'fin', t: 'Financeiro', ic: 'wallet', d: 'Despesas do mês e gastos fixos', p: ['financeiro', 'despesas-fixas'] },
   { k: 'rel', t: 'Relatórios', ic: 'report', d: 'Listas para planilha, extrato por bairro e arquivos', p: ['relatorios', 'extrato-bairro', 'drive'] },
-  { k: 'config', t: 'Configurações', ic: 'sliders', d: 'Equipe, acessos, ambientes e ajuda', p: ['equipe', 'ambientes', 'novidades', 'ajuda'] }
+  { k: 'config', t: 'Configurações', ic: 'sliders', d: 'Gabinete, equipe, acessos, ambientes e ajuda', p: ['gabinete', 'equipe', 'ambientes', 'novidades', 'ajuda'] }
 ];
 const areaOf = r => AREAS.find(a => a.p.includes(r)) || AREAS[0];
 // títulos curtos nas abas
@@ -3107,7 +3107,7 @@ IC.caret = '<path d="M7 10l5 5 5-5"/>';
 const PAGE_DESC = {
   painel: 'Resumo do dia, prazos e agenda', agenda: 'Compromissos em mês, semana ou lista', tarefas: 'Quadro de tarefas da equipe',
   demandas: 'Pedidos da população por protocolo', visitas: 'Quem passou pelo gabinete', ligacoes: 'Chamadas recebidas e feitas', captacao: 'Formulários públicos de cadastro', 'indicadores-demandas': 'Volume, temas e tempo de resposta',
-  federal: 'Ficha do parlamentar que você acompanha', proposicoes: 'Projetos e requerimentos do mandato', parlamentares: 'Candidatos de 2026 com mandato no Congresso',
+  gabinete: 'Parlamentar deste gabinete', federal: 'Ficha do parlamentar deste gabinete', proposicoes: 'Projetos e requerimentos do mandato', parlamentares: 'Candidatos de 2026 com mandato no Congresso',
   emendas: 'Emendas do mandato e sua execução', 'orcamento-federal': 'Emendas federais e pagamentos',
   contatos: 'Eleitores, lideranças e parceiros', rede: 'Quem indicou quem', mapa: 'Contatos e demandas por bairro', etiquetas: 'Segmentos da base', duplicados: 'Unir registros repetidos', aniversariantes: 'Parabéns do dia e da semana', 'indicadores-contatos': 'Crescimento e perfil da base',
   disparos: 'Campanhas de mensagens', noticias: 'Termos monitorados na imprensa', grupos: 'Grupos de WhatsApp', 'wa-contatos': 'Conversas cruzadas com a base', automacoes: 'Parabéns e respostas automáticas', canais: 'Números conectados',
@@ -3361,7 +3361,7 @@ function vEmendasReal() {
   const T = 'Emendas do mandato';
   if (!EMD) return carregando(T);
   const p = pBySq[meuSq()], nome = nomeP(p), A = EMD.aut[p.sq], L = emdLista(p.sq);
-  const troca = `<a class="btn" href="#federal">Trocar parlamentar</a>`;
+  const troca = `<a class="btn" href="#gabinete">Trocar em Configurações</a>`;
   if (!L.length) {
     const sem = !p.camara && !p.senado;
     return `<div class="wrap">${head(T, `Emendas individuais de ${esc(nome)} ao Orçamento da União.`, troca)}
@@ -5200,12 +5200,8 @@ function mpBarras(items, campo, ativo, clic) {
 }
 
 function vMeuParl3() {
-  const sq = meuSq(), p = pBySq[sq], st = mpSt(), busca = ui('mp-busca', { q: '' });
-  const res = busca.q.trim().length >= 2 ? PP.filter(x => norm(x.urna + ' ' + nomeP(x) + ' ' + x.civil).includes(norm(busca.q))).slice(0, 8) : [];
-  const atalhos = MEUS.map(m => acharParl(m.k, m.uf)).filter(Boolean);
-  const topo = `<div class="filters-row"><div class="pill-tabs">${atalhos.map(x => `<button type="button" class="${x.sq === sq ? 'on' : ''}" data-act="pf-meu" data-k="${x.sq}">${esc(nomeP(x))} <span class="num">${x.uf}</span></button>`).join('')}</div>
-    <div class="gs" style="flex:1 1 260px;max-width:380px"><input type="search" id="q-mp-busca" data-q="mp-busca" value="${esc(busca.q)}" placeholder="Trocar: buscar qualquer parlamentar" aria-label="Buscar parlamentar" style="padding-left:12px">
-    ${res.length ? `<div class="gres">${res.map(x => `<button type="button" data-act="pf-meu" data-k="${x.sq}"><small>${esc(x.partido)}-${esc(x.uf)}</small><span style="min-width:0"><b style="font-weight:500">${esc(nomeP(x))}</b><br><span class="note">${esc(x.cargo)} · ${esc(x.sit)}</span></span></button>`).join('')}</div>` : ''}</div></div>`;
+  const sq = meuSq(), p = pBySq[sq], st = mpSt();
+  const topo = `<p class="note">Gabinete de <b>${esc(nomeP(p))}</b> (${esc(p.partido)}-${esc(p.uf)}). Para trocar, vá em <a href="#gabinete">Configurações › Gabinete</a>.</p>`;
   if (!CAM) return `<div class="wrap">${head('Meu parlamentar', 'Atividade na Câmara dos Deputados.')}${topo}<p class="note">Carregando os dados da Câmara…</p></div>`;
   const C = p.camara, cid = C && String(C.id), A = cid && CAM.ag[cid], I = cid && CAM.info[cid], LST = cid && CAM.lista[cid];
   // cabeçalho com as informações do parlamentar
@@ -7785,6 +7781,42 @@ PAGE_DESC['mapa-votos'] = 'Votos por município, zona e local de votação';
 document.addEventListener('click', e => { if (e.target.closest('[data-act="mx-csv"]')) MX.csv(); });
 { const _r19 = render; render = function () { const a = document.activeElement; _r19(); MX.encaixar(a); }; }
 if (cur() === 'mapa-votos') render();
+</script>
+<script>
+/* =====================================================================
+   v20: Configurações › Gabinete — o parlamentar deste gabinete, um só.
+   Define Meu parlamentar, emendas do mandato e o resumo do início.
+   ===================================================================== */
+function vGabinete() {
+  const sq = meuSq(), p = pBySq[sq], busca = ui('gab-busca', { q: '' });
+  const res = busca.q.trim().length >= 2 ? PP.filter(x => norm(x.urna + ' ' + nomeP(x) + ' ' + x.civil).includes(norm(busca.q))).slice(0, 12) : [];
+  const sug = MEUS.map(m => acharParl(m.k, m.uf)).filter(Boolean);
+  const C = p.camara, LST = typeof CAM !== 'undefined' && CAM && C && CAM.lista[String(C.id)];
+  const item = x => `<li class="${x.sq === sq ? '' : 'click'}" ${x.sq === sq ? '' : `data-act="gab-def" data-k="${x.sq}"`}><span class="dateblk"><b>${esc(x.uf)}</b><span>${esc(x.partido)}</span></span><span class="grow"><span class="t">${esc(nomeP(x))}</span><span class="s">${esc(x.cargo)} · ${esc(x.sit)}${x.camara ? ' · passou pela Câmara' : ''}</span></span>${x.sq === sq ? chip('Este gabinete') : '<span class="note">Escolher</span>'}</li>`;
+  return `<div class="wrap">${head('Gabinete', 'O parlamentar deste gabinete. Ele define o Meu parlamentar, as emendas do mandato e o resumo do início.')}
+  <div class="grid-2">
+    <section class="panel"><div class="panel-h"><h2>Parlamentar do gabinete</h2></div><div class="panel-b">
+      <p style="font-size:1.25rem;font-weight:600;margin:0 0 4px">${esc(nomeP(p))}</p>
+      <p class="note" style="margin:0 0 12px">${esc(p.partido)}-${esc(p.uf)} · ${esc(p.cargo)} · ${esc(p.sit)}</p>
+      <p class="note">${C ? (LST ? 'Atividade na Câmara completa: indicadores, gráficos e a lista de proposições com filtros e exportação.' : 'Atividade na Câmara com indicadores e gráficos. A lista completa de proposições é gerada só para os parlamentares acompanhados pela rotina diária.') : 'Sem passagem pela Câmara dos Deputados: o Meu parlamentar mostra o cadastro, a cota parlamentar e as notícias.'}</p>
+      <p style="margin-top:12px"><a class="btn" href="#federal">Abrir Meu parlamentar</a></p>
+    </div></section>
+    <section class="panel"><div class="panel-h"><h2>Trocar</h2><span class="meta">só um por gabinete</span></div><div class="panel-b">
+      <input class="search" type="search" id="q-gab-busca" data-q="gab-busca" value="${esc(busca.q)}" placeholder="Buscar por nome" aria-label="Buscar parlamentar" style="width:100%">
+      ${busca.q.trim().length >= 2 ? (res.length ? `<ul class="rows">${res.map(item).join('')}</ul>` : '<p class="note">Nenhum parlamentar com esse nome.</p>') : `<p class="note" style="margin:12px 0 4px">Sugestões</p><ul class="rows">${sug.map(item).join('')}</ul>`}
+    </div></section>
+  </div>
+  <p class="note">A escolha vale para toda a equipe deste navegador e fica registrada na trilha de auditoria.</p></div>`;
+}
+ROUTES.gabinete = { t: 'Gabinete', g: 'Configurações', r: vGabinete };
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act="gab-def"]'); if (!a) return;
+  const de = pBySq[meuSq()], para = pBySq[a.dataset.k]; if (!para || para === de) return;
+  D.meuParl = para.sq; ui('gab-busca').q = '';
+  registrar('trilha', 'Parlamentar do gabinete alterado', { oque: 'Configurações › Gabinete' }, { de: nomeP(de), para: nomeP(para) }); save();
+  toast(`${nomeP(para)} é o parlamentar deste gabinete`); render();
+});
+if (cur() === 'gabinete') render();
 </script>
 <script>
 /* v9: entrada suave ao trocar de página (Minimalista e Suave) */
