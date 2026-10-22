@@ -18,7 +18,7 @@ A página Atendimento › Presença reúne horários de pico, atendidos, quem sa
 
 ## Atualização diária do Meu parlamentar
 
-Todo dia às 6h (Brasília), o workflow `atualizar-dados.yml` roda `rotina/atualizar_federal.py`. Ele baixa das fontes públicas as proposições da Câmara (2019 até hoje) e o cadastro dos acompanhados, a cota parlamentar da Câmara e do Senado (2023 até hoje) e as notícias dos últimos 60 dias. O resultado fica no ramo `dados`, que guarda só a última versão. Em seguida o workflow publica os três ambientes, e `rotina/embutir.py` coloca esses dados no `index.html` de cada um. O código continua passando por `develop` → `homologacao` → `main`. Só os dados entram direto.
+Todo dia às 6h (Brasília), o workflow `atualizar-dados.yml` roda `rotina/atualizar_federal.py`. Ele baixa das fontes públicas as proposições da Câmara (2019 até hoje) e o cadastro dos acompanhados, a cota parlamentar da Câmara e do Senado (2023 até hoje) e as notícias dos últimos 60 dias. O resultado fica no ramo `dados`, que guarda só a última versão. No GitHub Pages, a página busca esses arquivos no ramo `dados` ao abrir. Cada publicação de código também coloca a versão do dia no `index.html` (`rotina/embutir.py`), e essa cópia vale quando a busca falha ou o site está em outro endereço. O código continua passando por `develop` → `homologacao` → `main`. Só os dados entram direto.
 
 Se uma fonte vier pela metade (queda de mais de 10% nos totais), a rotina para sem gravar e o site fica com os dados do dia anterior. O GitHub avisa a falha por e-mail. Notícias que não puderem ser buscadas ficam com as anteriores que ainda estão na janela de 60 dias. Para rodar fora de hora: Actions › Atualizar dados do Meu parlamentar › Run workflow.
 

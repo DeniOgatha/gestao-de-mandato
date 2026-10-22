@@ -5147,22 +5147,36 @@ render();
    filtrável das proposições, com dados abertos da Câmara (base da CIE)
    ===================================================================== */
 let CAM = null;  // window.FED_DIA: data da rotina diária (lida também por telas de scripts anteriores)
-const gzBloco = async id => {
-  const t = document.getElementById(id)?.textContent.trim();
-  if (!t) return null;
+// No GitHub Pages, os dados do dia vêm do ramo "dados" do próprio repositório (a rotina diária grava lá
+// e o Pages não republica o mesmo commit). Em qualquer falha ficam os dados embutidos no index.html.
+const DADOS_DIA = location.hostname.endsWith('.github.io') && location.pathname.split('/')[1]
+  ? `https://raw.githubusercontent.com/${location.hostname.split('.')[0]}/${location.pathname.split('/')[1]}/dados/` : null;
+const doDia = async arq => {
+  if (!DADOS_DIA) return '';
+  const c = new AbortController(), t = setTimeout(() => c.abort(), 8000);
+  try { const r = await fetch(DADOS_DIA + arq, { signal: c.signal, cache: 'no-cache' }); return r.ok ? (await r.text()).trim() : ''; }
+  catch (e) { return ''; } finally { clearTimeout(t); }
+};
+const gzBloco = async (id, arq) => {
+  const em = document.getElementById(id)?.textContent.trim() || '';
+  const dia = arq ? await doDia(arq) : '';
+  for (const t of [dia, em]) { if (!t) continue; try { return await gunzipB64(t); } catch (e) { } }
+  return null;
+};
+const gunzipB64 = async t => {
   const b = atob(t), u = Uint8Array.from(b, c => c.charCodeAt(0));
   return JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
 };
 (async () => {
   // cota parlamentar e notícias da rotina diária (rotina/atualizar_federal.py) por cima das de dados-parl
   try {
-    const F = await gzBloco('dados-federal');
+    const F = await gzBloco('dados-federal', 'federal.b64');
     if (F) {
       PP.forEach(p => { const o = F.cota[p.sq]; if (!o) return; if (o.c && p.camara) Object.assign(p.camara, o.c); if (o.s && p.senado) p.senado.cota = o.s; });
       Object.assign(PARL.noticias, F.noticias); window.FED_DIA = F.geradoEm;
     }
   } catch (e) { }
-  try { CAM = await gzBloco('dados-camara'); } catch (e) { }
+  try { CAM = await gzBloco('dados-camara', 'camara.b64'); } catch (e) { }
   if (!CAM) CAM = { erro: true, ag: {}, lista: {}, info: {}, dic: { s: [], rg: [], tema: [], o: [], tr: [] } };
   render();  // a tela aberta (Meu parlamentar, ficha, painel) já mostra os dados do dia
 })();

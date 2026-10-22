@@ -3,7 +3,9 @@ name: Atualizar dados do Meu parlamentar
 # Todo dia às 6h (Brasília) baixa das fontes públicas as proposições da Câmara,
 # a cota parlamentar da Câmara e do Senado e as notícias de cada parlamentar
 # (rotina/atualizar_federal.py) e guarda o resultado no branch "dados".
-# Em seguida publica os três ambientes, que embutem esses dados no index.html.
+# A página busca esses arquivos no ramo "dados" ao abrir; não precisa republicar
+# (o Pages não troca uma publicação do mesmo commit). Cada publicação de código
+# também embute a versão do dia no index.html, que fica de reserva.
 # O branch "dados" guarda só a última versão: cada execução substitui a anterior.
 on:
   schedule:
@@ -12,7 +14,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency: { group: atualizar-dados, cancel-in-progress: false }
 
@@ -44,6 +45,3 @@ jobs:
           git add camara.b64 federal.b64 status.json
           git commit -q -m "Dados de $(date -u +%F)"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" dados
-      - name: Publicar os ambientes
-        env: { GH_TOKEN: '${{ github.token }}' }
-        run: gh workflow run publicar.yml --repo ${{ github.repository }} --ref main
