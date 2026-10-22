@@ -120,7 +120,7 @@
 <h1>Sistema de Gestão de Mandato</h1>
 <p class="subtitle">Resumo de implantação</p>
 
-<p class="lead">O sistema pode começar com cerca de <b>R$ 250 por mês</b> de infraestrutura (opção enxuta) ou cerca de <b>R$ 950 por mês</b> (opção completa), sempre no CNPJ da empresa contratante. A hospedagem é a parte simples. O trabalho maior está na segurança dos dados de eleitores: isolamento entre gabinetes, segundo fator, registro de acessos, backup testado e LGPD.</p>
+<p class="lead">O sistema pode começar com cerca de <b>R$ 250 por mês</b> de infraestrutura (opção enxuta) ou cerca de <b>R$ 950 por mês</b> (opção completa), sempre no CNPJ da empresa contratante. Cada número de WhatsApp soma <b>~R$ 100 por mês</b>. A hospedagem é a parte simples. O trabalho maior está na segurança dos dados de eleitores: isolamento entre gabinetes, segundo fator, registro de acessos, backup testado e LGPD.</p>
 
 <div class="figures">
   <div><b>~R$ 250</b><span>por mês, opção enxuta</span></div>
@@ -144,6 +144,7 @@
     <tr><td>E-mail da empresa</td><td>Cadastro e recuperação das contas acima</td><td>Necessário<span class="sub">Gmail gratuito basta</span></td></tr>
     <tr><td>Cofre de senhas</td><td>Guarda os acessos sob controle da empresa</td><td>Necessário<span class="sub">grátis para 2 pessoas</span></td></tr>
     <tr><td>Sentry</td><td>Avisa quando o sistema dá erro, sem receber dados pessoais</td><td>Recomendado<span class="sub">grátis no início</span></td></tr>
+    <tr><td>WhatsApp<span class="sub">Z-API ou API oficial da Meta</span></td><td>Liga o número de cada gabinete à caixa de entrada e aos disparos</td><td>Necessário<span class="sub">um número por gabinete</span></td></tr>
   </tbody>
 </table></div>
 <p class="note">O Supabase só envia e-mails de teste por conta própria. Em produção, convites e recuperação de senha dependem do serviço de envio.</p>
@@ -243,7 +244,7 @@
 <h3>Antes do primeiro cliente</h3>
 <p>O desenvolvimento do sistema, um teste de invasão feito por empresa especializada e a revisão de contratos, termos e LGPD por um advogado. Esses itens ficam fora das estimativas deste resumo.</p>
 <h3>Podem entrar depois</h3>
-<p>Servidor maior se ficar lento (~R$ 250/mês), SMS para login (~R$ 410/mês + por mensagem), Sentry pago (~R$ 145/mês) e WhatsApp oficial (por conversa).</p>
+<p>Servidor maior se ficar lento (~R$ 250/mês), SMS para login (~R$ 410/mês + por mensagem), Sentry pago (~R$ 145/mês) e a API oficial do WhatsApp (cobrada por mensagem), se o gabinete fizer disparos em massa.</p>
 
 <h2 id="etapas">Etapas e complexidade</h2>
 <p>As etapas seguem esta ordem, mas a segurança não fica para o fim: a base dela (isolamento, segundo fator, perfis) é construída na etapa 2. A etapa 4 valida essa base e fecha a parte jurídica, que pode começar em paralelo desde o início. As etapas 2 e 4 são as mais pesadas: o cliente não as vê, mas um erro nelas expõe dados de eleitores.</p>
@@ -305,6 +306,9 @@
   <tbody>
     <tr><td>Na opção enxuta</td><td class="num">~R$ 13</td><td class="num">~R$ 24</td><td class="num">~R$ 710</td></tr>
     <tr><td>Na opção completa</td><td class="num">~R$ 48</td><td class="num">~R$ 59</td><td class="num">~R$ 710</td></tr>
+    <tr><td>WhatsApp, 1 número (Z-API)</td><td class="num">~R$ 100</td><td class="num">~R$ 100</td><td class="num">~R$ 100</td></tr>
+    <tr class="total"><td>Com WhatsApp, opção enxuta</td><td class="num">~R$ 113</td><td class="num">~R$ 124</td><td class="num">~R$ 810</td></tr>
+    <tr class="total"><td>Com WhatsApp, opção completa</td><td class="num">~R$ 148</td><td class="num">~R$ 159</td><td class="num">~R$ 810</td></tr>
   </tbody>
 </table></div>
 <ul>
@@ -312,6 +316,24 @@
   <li><b>Profissional:</b> a mesma parte, mais a homologação compartilhada (~R$ 55 por mês) dividida entre 5 gabinetes desse nível. Com só 1 gabinete no Profissional, sobe para ~R$ 68 na enxuta e ~R$ 103 na completa.</li>
   <li><b>Dedicado:</b> produção própria com PITR e homologação própria (~R$ 700 por mês), mais a parte de Vercel, cofre e domínio, que continuam compartilhados. Por isso fica igual nas duas opções.</li>
   <li>Valores arredondados, sem as horas de manutenção (4 h ou 10 h por mês nos níveis superiores) e sem a variação do câmbio.</li>
+</ul>
+
+<h3>WhatsApp: Z-API ou API oficial da Meta</h3>
+<p>A caixa de entrada e os disparos precisam de um serviço que ligue o número de WhatsApp de cada gabinete ao sistema. Há dois caminhos.</p>
+<div class="tw"><table>
+  <thead><tr><th style="width:22%"></th><th>Z-API</th><th>API oficial da Meta</th></tr></thead>
+  <tbody>
+    <tr><td>Mensalidade</td><td>R$ 99,99 por número (R$ 89,99 a partir de 10 números; no plano anual, 10% a menos)</td><td>Nenhuma da Meta; o provedor intermediário, se houver, cobra à parte</td></tr>
+    <tr><td>Por mensagem</td><td>Sem custo e sem limite de envio</td><td>Resposta a quem escreveu, em até 24 h: grátis. Avisos (utilidade): ~R$ 0,04 a 0,05. Campanhas (marketing): ~R$ 0,31 a 0,38</td></tr>
+    <tr><td>Como conecta</td><td>Leitura de QR code, como o WhatsApp no computador</td><td>Número verificado na Meta; modelos de mensagem aprovados antes de enviar</td></tr>
+    <tr><td>Risco</td><td>Não é oficial: a Meta pode bloquear o número, sobretudo com envio em massa</td><td>Oficial; regras de envio mais rígidas</td></tr>
+  </tbody>
+</table></div>
+<ul>
+  <li><b>Atendimento um a um:</b> a Z-API basta e tem custo fixo, cerca de R$ 100 por número por mês. Com 20 gabinetes no plano para 10 ou mais números, ficam ~R$ 1.800 por mês.</li>
+  <li><b>Disparos em massa</b> (convites, prestação de contas): pela API oficial, para não arriscar o bloqueio do número do gabinete. Uma campanha para 1.000 contatos sai por ~R$ 310 a 380.</li>
+  <li><b>Teste e homologação:</b> um número de teste na Z-API (~R$ 100 por mês) só nos meses em que o WhatsApp estiver em teste. A Z-API oferece 2 dias grátis.</li>
+  <li>Os valores por mensagem da Meta são estimativas de terceiros para o Brasil e podem mudar: a Meta passou a cobrar em reais em julho de 2026 e tem mudado as regras das mensagens de atendimento. Provedores intermediários costumam somar 10% a 30%.</li>
 </ul>
 
 <h2 id="decisoes">Decisões em aberto</h2>
@@ -328,6 +350,7 @@
     <tr><td>Gabinetes no primeiro ano</td><td>Piloto com 1, depois até 20</td><td>Até o piloto</td></tr>
     <tr><td>Níveis e preços do pacote</td><td>A definir</td><td>Até o piloto</td></tr>
     <tr><td>Encarregado de dados (DPO)</td><td>Pessoa da empresa ou serviço externo</td><td>Até o piloto</td></tr>
+    <tr><td>WhatsApp: Z-API ou API oficial</td><td>Z-API no atendimento; API oficial para disparos em massa</td><td>Até o piloto</td></tr>
     <tr><td>Advogado para contrato e LGPD</td><td>Confirmar se a empresa já tem</td><td>Até o piloto</td></tr>
   </tbody>
 </table></div>
