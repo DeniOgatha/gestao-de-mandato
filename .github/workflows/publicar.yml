@@ -27,12 +27,24 @@ jobs:
       - name: Montar o site
         run: |
           mkdir -p _site/homologacao _site/teste
-          rsync -a --exclude .git --exclude .github producao/ _site/
-          rsync -a --exclude .git --exclude .github homologacao/ _site/homologacao/
-          rsync -a --exclude .git --exclude .github teste/ _site/teste/
+          rsync -a --exclude .git --exclude .github --exclude rotina producao/ _site/
+          rsync -a --exclude .git --exclude .github --exclude rotina homologacao/ _site/homologacao/
+          rsync -a --exclude .git --exclude .github --exclude rotina teste/ _site/teste/
           for a in producao homologacao teste; do echo "$a $(git -C $a rev-parse --short HEAD) $(git -C $a log -1 --format=%cI)"; done > _site/versoes.txt
           touch _site/.nojekyll
           cat _site/versoes.txt
+      - name: Embutir os dados do dia
+        # branch "dados", gerado pelo workflow atualizar-dados.yml; sem ele, cada ambiente fica com os dados do próprio index.html
+        run: |
+          if git -C producao ls-remote --exit-code origin dados >/dev/null; then
+            git -C producao fetch --depth 1 origin dados
+            mkdir dados && git -C producao --work-tree="$PWD/dados" checkout FETCH_HEAD -- .
+            cat dados/status.json
+            script=$(ls producao/rotina/embutir.py teste/rotina/embutir.py 2>/dev/null | head -1)
+            python3 "$script" dados _site/index.html _site/homologacao/index.html _site/teste/index.html
+          else
+            echo "Sem o branch dados ainda."
+          fi
       - uses: actions/upload-pages-artifact@v3
         with: { path: _site }
 
