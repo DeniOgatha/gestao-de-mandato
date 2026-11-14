@@ -1,0 +1,18 @@
+{
+ "execucao": "2026-11-14",
+ "avisos": [],
+ "camaraAte": "2026-11-14",
+ "proposicoes": 418371,
+ "deputadosComProposicoes": 700,
+ "listas": {
+  "156190": 2798,
+  "220705": 178
+ },
+ "parlamentaresComCota": 754,
+ "pessoasComNoticias": 956,
+ "falhasNoticias": 0,
+ "kb": {
+  "camara": 410,
+  "federal": 1729
+ }
+}
